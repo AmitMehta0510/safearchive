@@ -57,7 +57,7 @@ const createRepository = async (req, res) => {
   } catch (err) {
     console.error("Error during repository creation:", err.message);
     if (err.code === 11000) {
-      return res.status(400).json({ error: "Repository with this name already exists" });
+      return res.status(400).json({ error: "You already have a repository with this name" });
     }
     res.status(500).json({ error: "Server error" });
   }
