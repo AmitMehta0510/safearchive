@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@primer/react": "^37.6.0",
+    "axios": "^1.7.8"
+  }
+}
