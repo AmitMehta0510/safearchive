@@ -11,7 +11,14 @@ import { useAuth } from "../../authContext";
 const Profile = () => {
   const navigate = useNavigate();
   const [userDetails, setUserDetails] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview"); // "overview" | "starred"
+  const [activeTab, setActiveTab] = useState("overview");
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editBio, setEditBio] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editWebsite, setEditWebsite] = useState("");
+  const [isCustomizePinsOpen, setIsCustomizePinsOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false); // "overview" | "starred"
   const [loading, setLoading] = useState(true);
   const { setCurrentUser } = useAuth();
 
@@ -23,6 +30,10 @@ const Profile = () => {
       setLoading(true);
       const response = await api.get(`/userProfile/${currentUserId}`);
       setUserDetails(response.data);
+      setEditBio(response.data.bio || "");
+      setEditCompany(response.data.company || "");
+      setEditLocation(response.data.location || "");
+      setEditWebsite(response.data.website || "");
     } catch (err) {
       console.error("Cannot fetch user details: ", err);
     } finally {
@@ -49,6 +60,38 @@ const Profile = () => {
   const repoList = userDetails.repositories || [];
   const followingCount = (userDetails.followedUsers || []).length;
   const followersCount = userDetails.followersCount || 0;
+
+  
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    try {
+      setSavingProfile(true);
+      const res = await api.put("/updateProfile/" + currentUserId, {
+        bio: editBio,
+        company: editCompany,
+        location: editLocation,
+        website: editWebsite,
+      });
+      setUserDetails(res.data);
+      setIsEditProfileOpen(false);
+    } catch (err) {
+      alert("Failed to update profile: " + (err.response?.data?.message || err.message));
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleTogglePin = async (repoId) => {
+    try {
+      const res = await api.post("/user/pin/" + repoId);
+      setUserDetails((prev) => ({
+        ...prev,
+        pinnedRepos: res.data.pinnedRepos,
+      }));
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update pinned repository");
+    }
+  };
 
   const handleSignOut = () => {
     localStorage.removeItem("token");
@@ -159,6 +202,45 @@ const Profile = () => {
             </span>
           </div>
 
+          {/* Bio & Details */}
+          {userDetails.bio && (
+            <div style={{ marginTop: "14px", fontSize: "0.9rem", color: "#c9d1d9", lineHeight: "1.4" }}>
+              {userDetails.bio}
+            </div>
+          )}
+
+          <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.84rem", color: "#8b949e" }}>
+            {userDetails.company && (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>🏢</span>
+                <span style={{ color: "#c9d1d9" }}>{userDetails.company}</span>
+              </div>
+            )}
+            {userDetails.location && (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>📍</span>
+                <span style={{ color: "#c9d1d9" }}>{userDetails.location}</span>
+              </div>
+            )}
+            {userDetails.website && (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>🔗</span>
+                <a href={userDetails.website.startsWith("http") ? userDetails.website : ("https://" + userDetails.website)} target="_blank" rel="noreferrer" style={{ color: "#58a6ff", textDecoration: "none" }}>
+                  {userDetails.website}
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Edit Profile Button */}
+          <button
+            onClick={() => setIsEditProfileOpen(true)}
+            className="btn-secondary"
+            style={{ width: "100%", marginTop: "16px", justifyContent: "center" }}
+          >
+            Edit Profile
+          </button>
+
           {/* Sign Out Button in Sidebar */}
           <button
             onClick={handleSignOut}
@@ -189,6 +271,62 @@ const Profile = () => {
         <main className="profile-main-content">
           {activeTab === "overview" && (
             <div>
+              {/* Pinned Repositories Section */}
+              <div style={{ marginBottom: "24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                  <h4 style={{ margin: 0, color: "#f0f6fc", fontSize: "1rem" }}>
+                    Pinned Repositories
+                  </h4>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: "0.8rem", padding: "3px 10px" }}
+                    onClick={() => setIsCustomizePinsOpen(true)}
+                  >
+                    Customize your pins
+                  </button>
+                </div>
+
+                {(!userDetails.pinnedRepos || userDetails.pinnedRepos.length === 0) ? (
+                  <div style={{ padding: "16px", border: "1px dashed #30363d", borderRadius: "6px", color: "#8b949e", fontSize: "0.88rem", textAlign: "center" }}>
+                    No pinned repositories yet. Click "Customize your pins" to showcase up to 6 vaults!
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "12px" }}>
+                    {userDetails.pinnedRepos.map((pin) => {
+                      const pId = pin._id || pin;
+                      const pName = pin.name || "Repository";
+                      return (
+                        <div
+                          key={pId}
+                          style={{
+                            backgroundColor: "#161b22",
+                            border: "1px solid #30363d",
+                            borderRadius: "6px",
+                            padding: "16px",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                              <Link to={"/repo/" + pId} style={{ color: "#58a6ff", fontWeight: 600, textDecoration: "none", fontSize: "0.95rem" }}>
+                                📌 {pName}
+                              </Link>
+                              <span className="badge-visibility">{pin.visibility || "public"}</span>
+                            </div>
+                            <p style={{ margin: 0, color: "#8b949e", fontSize: "0.85rem", lineHeight: "1.4" }}>
+                              {pin.description || "SafeArchive cloud vault"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* HeatMap Section */}
               <div className="heat-map-section" style={{ marginBottom: "24px" }}>
                 <HeatMapProfile userId={currentUserId} />

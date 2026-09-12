@@ -1675,3 +1675,128 @@
   white-space: pre;
 }
 
+
+/* ==========================================================================
+   PHASE 3: EMOJI REACTIONS & COLLABORATORS STYLES
+   ========================================================================== */
+
+/* --- Reaction Picker --- */
+.reaction-picker-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.reaction-pills-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  color: #c9d1d9;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.reaction-pill:hover {
+  background-color: #30363d;
+  border-color: #58a6ff;
+}
+
+.reaction-pill.active {
+  background-color: rgba(56, 139, 253, 0.15);
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.reaction-emoji {
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.reaction-count {
+  font-weight: 600;
+  font-size: 0.74rem;
+}
+
+.btn-add-reaction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  padding: 2px 7px;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  height: 22px;
+}
+
+.btn-add-reaction:hover {
+  background-color: #21262d;
+  color: #f0f6fc;
+  border-color: #8b949e;
+}
+
+.reaction-menu-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  background-color: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  padding: 4px 8px;
+  box-shadow: 0 8px 24px rgba(1, 4, 9, 0.85);
+  display: flex;
+  gap: 6px;
+  z-index: 100;
+  animation: fadeInPop 0.15s ease;
+}
+
+@keyframes fadeInPop {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.reaction-menu-item {
+  background: none;
+  border: none;
+  font-size: 1.15rem;
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 4px;
+  transition: transform 0.12s ease;
+}
+
+.reaction-menu-item:hover {
+  transform: scale(1.25);
+}
+
+/* --- Collaborators in Settings --- */
+.collaborators-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.collaborator-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background-color: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+}
+

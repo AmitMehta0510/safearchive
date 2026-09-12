@@ -17,4 +17,8 @@ issueRouter.post("/issue/create/:id", authMiddleware, validateCreateIssue, valid
 issueRouter.put("/issue/update/:id", authMiddleware, validateUpdateIssue, validate, issueController.updateIssueById);
 issueRouter.delete("/issue/delete/:id", authMiddleware, issueController.deleteIssueById);
 
+// ── Reactions & Comments ──────────────────────────────────────────────────────
+issueRouter.post("/issue/:id/react", authMiddleware, issueController.toggleIssueReaction);
+issueRouter.post("/issue/:id/comments", authMiddleware, issueController.addIssueComment);
+
 module.exports = issueRouter;

@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback } from "react";
 import api from "../../config/api";
+import ReactionPicker from "../ReactionPicker";
 
 const PullRequestDetail = ({ prId, repoId, onBack, onUpdated }) => {
   const [prData, setPrData] = useState(null);
@@ -11,6 +12,32 @@ const PullRequestDetail = ({ prId, repoId, onBack, onUpdated }) => {
   const [merging, setMerging] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
   const [error, setError] = useState("");
+
+  const currentUserId = localStorage.getItem("userId");
+
+  const handleReact = async (emoji, commentId = null) => {
+    try {
+      const res = await api.post(`/repo/${repoId}/pulls/${prId}/react`, {
+        emoji,
+        commentId,
+      });
+      if (commentId) {
+        setPrData((prev) => ({
+          ...prev,
+          comments: (prev.comments || []).map((c) =>
+            c._id === commentId ? { ...c, reactions: res.data.reactions } : c
+          ),
+        }));
+      } else {
+        setPrData((prev) => ({
+          ...prev,
+          reactions: res.data.reactions,
+        }));
+      }
+    } catch (err) {
+      console.error("Error reacting to PR:", err);
+    }
+  };
 
   const fetchPR = useCallback(async () => {
     try {
@@ -192,6 +219,13 @@ const PullRequestDetail = ({ prId, repoId, onBack, onUpdated }) => {
               ) : (
                 <em style={{ color: "#8b949e" }}>No description provided.</em>
               )}
+              <div style={{ marginTop: "12px" }}>
+                <ReactionPicker
+                  reactions={prData.reactions}
+                  currentUserId={currentUserId}
+                  onReact={(emoji) => handleReact(emoji)}
+                />
+              </div>
             </div>
           </div>
 
@@ -211,6 +245,13 @@ const PullRequestDetail = ({ prId, repoId, onBack, onUpdated }) => {
                 </div>
                 <div className="comment-body">
                   <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{comment.content}</p>
+                  <div style={{ marginTop: "10px" }}>
+                    <ReactionPicker
+                      reactions={comment.reactions}
+                      currentUserId={currentUserId}
+                      onReact={(emoji) => handleReact(emoji, comment._id)}
+                    />
+                  </div>
                 </div>
               </div>
             );

@@ -1,6 +1,8 @@
 ﻿const mongoose = require("mongoose");
 const Repository = require("../models/repoModel");
 const Issue = require("../models/issueModel");
+const User = require("../models/userModel");
+const { sendNotification } = require("../utils/notifyHelper");
 
 // ── Helper: parse pagination params ──────────────────────────────────────────
 function getPagination(query) {
@@ -14,16 +16,23 @@ function getPagination(query) {
 const createIssue = async (req, res) => {
   const { title, description, repository: bodyRepo } = req.body;
   const repoId = req.params.id || bodyRepo;
+  const userId = req.user;
 
   try {
     if (!repoId || !mongoose.Types.ObjectId.isValid(repoId)) {
       return res.status(400).json({ error: "Valid repository ID is required." });
     }
 
+    const repo = await Repository.findById(repoId);
+    if (!repo) {
+      return res.status(404).json({ error: "Repository not found." });
+    }
+
     const issue = new Issue({
       title: title.trim(),
       description: description ? description.trim() : "",
       repository: repoId,
+      author: userId || null,
       status: "open",
     });
 
@@ -39,6 +48,19 @@ const createIssue = async (req, res) => {
         repoId,
         timestamp: new Date().toISOString(),
       });
+
+      // Send notification to repository owner
+      if (repo.owner) {
+        const senderUser = userId ? await User.findById(userId) : null;
+        sendNotification(io, {
+          recipient: repo.owner,
+          sender: userId,
+          type: "issue",
+          title: "New Issue Created",
+          message: `${senderUser ? senderUser.username : "A user"} opened issue: "${savedIssue.title}" on ${repo.name}`,
+          link: `/repo/${repoId}`,
+        });
+      }
     }
 
     res.status(201).json(savedIssue);
@@ -118,6 +140,9 @@ const getAllIssues = async (req, res) => {
 
     const [issues, total] = await Promise.all([
       Issue.find(query)
+        .populate("author", "username avatar")
+        .populate("comments.author", "username avatar")
+        .populate("reactions.users", "username")
         .sort({ _id: -1 })
         .skip(skip)
         .limit(limit),
@@ -150,11 +175,145 @@ const getIssueById = async (req, res) => {
       return res.status(400).json({ error: "Invalid issue ID" });
     }
 
-    const issue = await Issue.findById(id).populate("repository", "name owner");
+    const issue = await Issue.findById(id)
+      .populate("repository", "name owner")
+      .populate("author", "username avatar")
+      .populate("comments.author", "username avatar")
+      .populate("reactions.users", "username");
+
     if (!issue) return res.status(404).json({ error: "Issue not found" });
     res.json(issue);
   } catch (err) {
     console.error("Error during issue retrieval:", err.message);
+    res.status(500).json({ error: "Server Error" });
+  }
+};
+
+// ── Toggle Issue Reaction ─────────────────────────────────────────────────────
+const toggleIssueReaction = async (req, res) => {
+  const { id } = req.params;
+  const { emoji, commentId } = req.body;
+  const userId = req.user;
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid issue ID" });
+    }
+    if (!emoji || !emoji.trim()) {
+      return res.status(400).json({ error: "Emoji is required" });
+    }
+
+    const issue = await Issue.findById(id);
+    if (!issue) return res.status(404).json({ error: "Issue not found" });
+
+    let targetReactions = issue.reactions;
+
+    if (commentId) {
+      const comment = (issue.comments || []).id(commentId);
+      if (!comment) return res.status(404).json({ error: "Comment not found" });
+      if (!comment.reactions) comment.reactions = [];
+      targetReactions = comment.reactions;
+    }
+
+    const existingIdx = targetReactions.findIndex((r) => r.emoji === emoji);
+
+    if (existingIdx >= 0) {
+      const userIdx = targetReactions[existingIdx].users.findIndex(
+        (u) => u.toString() === userId.toString()
+      );
+      if (userIdx >= 0) {
+        // Toggle OFF
+        targetReactions[existingIdx].users.splice(userIdx, 1);
+        if (targetReactions[existingIdx].users.length === 0) {
+          targetReactions.splice(existingIdx, 1);
+        }
+      } else {
+        // Toggle ON
+        targetReactions[existingIdx].users.push(userId);
+      }
+    } else {
+      // New emoji reaction
+      targetReactions.push({ emoji, users: [userId] });
+    }
+
+    await issue.save();
+
+    const populated = await Issue.findById(id)
+      .populate("reactions.users", "username")
+      .populate("comments.reactions.users", "username");
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("repo_" + issue.repository).emit("issue_reaction", {
+        issueId: id,
+        reactions: commentId ? populated.comments.id(commentId).reactions : populated.reactions,
+      });
+    }
+
+    res.json({
+      message: "Reaction toggled",
+      reactions: commentId ? populated.comments.id(commentId).reactions : populated.reactions,
+    });
+  } catch (err) {
+    console.error("Error toggling issue reaction:", err.message);
+    res.status(500).json({ error: "Server Error" });
+  }
+};
+
+// ── Add Issue Comment ─────────────────────────────────────────────────────────
+const addIssueComment = async (req, res) => {
+  const { id } = req.params;
+  const { content } = req.body;
+  const userId = req.user;
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid issue ID" });
+    }
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: "Comment content is required" });
+    }
+
+    const issue = await Issue.findById(id);
+    if (!issue) return res.status(404).json({ error: "Issue not found" });
+
+    const newComment = {
+      author: userId,
+      content: content.trim(),
+      createdAt: new Date(),
+      reactions: [],
+    };
+
+    if (!issue.comments) issue.comments = [];
+    issue.comments.push(newComment);
+    await issue.save();
+
+    const populated = await Issue.findById(id).populate("comments.author", "username avatar");
+    const addedComment = populated.comments[populated.comments.length - 1];
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("repo_" + issue.repository).emit("issue_comment", {
+        issueId: id,
+        comment: addedComment,
+      });
+
+      if (issue.author) {
+        const commenter = await User.findById(userId);
+        sendNotification(io, {
+          recipient: issue.author,
+          sender: userId,
+          type: "comment",
+          title: "New Comment on Issue",
+          message: `${commenter ? commenter.username : "A user"} commented on your issue: "${issue.title}"`,
+          link: `/repo/${issue.repository}`,
+        });
+      }
+    }
+
+    res.status(201).json({ message: "Comment added", comment: addedComment });
+  } catch (err) {
+    console.error("Error adding issue comment:", err.message);
     res.status(500).json({ error: "Server Error" });
   }
 };
@@ -165,4 +324,6 @@ module.exports = {
   deleteIssueById,
   getAllIssues,
   getIssueById,
+  toggleIssueReaction,
+  addIssueComment,
 };

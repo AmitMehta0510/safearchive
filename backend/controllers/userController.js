@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const Repository = require("../models/repoModel");
 const Issue = require("../models/issueModel");
+const { sendNotification } = require("../utils/notifyHelper");
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY || "safearchive_jwt_secret";
 
@@ -183,11 +184,17 @@ const getUserProfile = async (req, res) => {
 // ── Update Profile ────────────────────────────────────────────────────────────
 const updateUserProfile = async (req, res) => {
   const { id } = req.params;
-  const { email, password } = req.body;
+  const { email, password, bio, company, location, website, avatar, pinnedRepos } = req.body;
 
   try {
     const updateFields = {};
     if (email) updateFields.email = email;
+    if (bio !== undefined) updateFields.bio = bio;
+    if (company !== undefined) updateFields.company = company;
+    if (location !== undefined) updateFields.location = location;
+    if (website !== undefined) updateFields.website = website;
+    if (avatar !== undefined) updateFields.avatar = avatar;
+    if (pinnedRepos !== undefined) updateFields.pinnedRepos = pinnedRepos;
     if (password) {
       const salt = await bcrypt.genSalt(10);
       updateFields.password = await bcrypt.hash(password, salt);
@@ -197,7 +204,7 @@ const updateUserProfile = async (req, res) => {
       id,
       { $set: updateFields },
       { new: true, select: "-password" }
-    );
+    ).populate("pinnedRepos").populate("repositories");
 
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" });
@@ -259,6 +266,16 @@ const toggleStarRepo = async (req, res) => {
         repoName: repo.name,
         timestamp: new Date().toISOString(),
       });
+      if (!isStarred && repo.owner) {
+        sendNotification(io, {
+          recipient: repo.owner,
+          sender: userId,
+          type: "star",
+          title: "New Repository Star",
+          message: `${user.username} starred your repository ${repo.name}`,
+          link: `/repo/${repoId}`,
+        });
+      }
     }
 
     const starCount = await User.countDocuments({ starRepos: repoId });
@@ -303,6 +320,16 @@ const toggleFollowUser = async (req, res) => {
         targetUser: targetUser.username,
         timestamp: new Date().toISOString(),
       });
+      if (!isFollowing) {
+        sendNotification(io, {
+          recipient: targetId,
+          sender: currentUserId,
+          type: "follow",
+          title: "New Follower",
+          message: `${currentUser.username} started following you`,
+          link: `/userProfile/${currentUserId}`,
+        });
+      }
     }
 
     const followersCount = await User.countDocuments({ followedUsers: targetId });
@@ -410,7 +437,50 @@ const getUserContributions = async (req, res) => {
   }
 };
 
+
+// ── Toggle Pin Repository on Profile ──────────────────────────────────────────
+const togglePinRepo = async (req, res) => {
+  const userId = req.user;
+  const { repoId } = req.params;
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(repoId)) {
+      return res.status(400).json({ error: "Invalid repository ID" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!user.pinnedRepos) user.pinnedRepos = [];
+    const isPinned = user.pinnedRepos.some((r) => r.toString() === repoId.toString());
+
+    if (isPinned) {
+      user.pinnedRepos = user.pinnedRepos.filter((r) => r.toString() !== repoId.toString());
+    } else {
+      if (user.pinnedRepos.length >= 6) {
+        return res.status(400).json({ error: "You can pin up to 6 repositories." });
+      }
+      user.pinnedRepos.push(repoId);
+    }
+
+    await user.save();
+
+    const populated = await User.findById(userId).populate("pinnedRepos");
+    res.json({
+      message: isPinned ? "Repository unpinned" : "Repository pinned",
+      isPinned: !isPinned,
+      pinnedRepos: populated.pinnedRepos,
+    });
+  } catch (err) {
+    console.error("Error toggling pinned repository:", err.message);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 module.exports = {
+  togglePinRepo,
   signup,
   login,
   getAllUsers,

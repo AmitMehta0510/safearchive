@@ -1,12 +1,13 @@
-import React from "react";
+﻿import React from "react";
 import { Link } from "react-router-dom";
+import NotificationCenter from "./NotificationCenter";
 import "./navbar.css";
 
 const Navbar = () => {
   return (
     <nav>
       <Link to="/" style={{ textDecoration: "none" }}>
-        <div style={{ alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center" }}>
           <svg
             height="32"
             viewBox="0 0 16 16"
@@ -19,7 +20,8 @@ const Navbar = () => {
           <h3 style={{ margin: 0, fontWeight: 700, letterSpacing: "0.5px" }}>SafeArchive</h3>
         </div>
       </Link>
-      <div style={{ alignItems: "center", gap: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <NotificationCenter />
         <Link to="/repo/create" style={{ textDecoration: "none" }}>
           <p style={{ margin: 0 }}>+ New Repository</p>
         </Link>

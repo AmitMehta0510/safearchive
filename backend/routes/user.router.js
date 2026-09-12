@@ -21,5 +21,6 @@ userRouter.delete("/deleteProfile/:id", authMiddleware, userController.deleteUse
 
 userRouter.post("/user/star/:repoId", authMiddleware, userController.toggleStarRepo);
 userRouter.post("/user/follow/:targetId", authMiddleware, userController.toggleFollowUser);
+userRouter.post("/user/pin/:repoId", authMiddleware, userController.togglePinRepo);
 
 module.exports = userRouter;

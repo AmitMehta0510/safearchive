@@ -4,6 +4,7 @@ const PullRequest = require("../models/pullRequestModel");
 const Repository = require("../models/repoModel");
 const User = require("../models/userModel");
 const { compareFileSets } = require("../utils/diffHelper");
+const { sendNotification } = require("../utils/notifyHelper");
 
 // Helper: Get files for a specific branch
 function getFilesForBranch(repo, branchName) {
@@ -107,6 +108,17 @@ const createPullRequest = async (req, res) => {
         title: pullRequest.title,
         timestamp: new Date().toISOString(),
       });
+      // Send notification to repo owner
+      if (repo.owner) {
+        sendNotification(io, {
+          recipient: repo.owner,
+          sender: author,
+          type: "pr",
+          title: "New Pull Request",
+          message: `${populatedPR.author?.username || "A user"} opened PR #${prNumber}: "${pullRequest.title}" on ${repo.name}`,
+          link: `/repo/${id}`,
+        });
+      }
     }
 
     res.status(201).json({
@@ -178,7 +190,9 @@ const getPullRequestById = async (req, res) => {
       .populate("author", "username email")
       .populate("comments.author", "username email")
       .populate("mergedBy", "username")
-      .populate("closedBy", "username");
+      .populate("closedBy", "username")
+      .populate("reactions.users", "username")
+      .populate("comments.reactions.users", "username");
 
     if (!pullRequest) {
       return res.status(404).json({ error: "Pull request not found" });
@@ -285,6 +299,17 @@ const addPRComment = async (req, res) => {
         author: createdComment.author?.username || "User",
         timestamp: new Date().toISOString(),
       });
+      // Send notification to PR author
+      if (pullRequest.author) {
+        sendNotification(io, {
+          recipient: pullRequest.author,
+          sender: author,
+          type: "comment",
+          title: "New Comment on PR",
+          message: `${createdComment.author?.username || "A user"} commented on PR #${pullRequest.prNumber}`,
+          link: `/repo/${id}`,
+        });
+      }
     }
 
     res.status(201).json({
@@ -408,6 +433,17 @@ const mergePullRequest = async (req, res) => {
         prNumber: pullRequest.prNumber,
         timestamp: new Date().toISOString(),
       });
+      // Send notification to PR author
+      if (pullRequest.author) {
+        sendNotification(io, {
+          recipient: pullRequest.author,
+          sender: userId,
+          type: "pr",
+          title: "Pull Request Merged",
+          message: `Your PR #${pullRequest.prNumber} was merged into ${targetBranch} by ${populatedPR.mergedBy?.username || "User"}`,
+          link: `/repo/${id}`,
+        });
+      }
     }
 
     res.json({
@@ -484,7 +520,81 @@ const togglePRStatus = async (req, res) => {
   }
 };
 
+
+// 8. Toggle PR Reaction
+const togglePRReaction = async (req, res) => {
+  const { id, prId } = req.params;
+  const { emoji, commentId } = req.body;
+  const userId = req.user;
+
+  try {
+    if (!emoji || !emoji.trim()) {
+      return res.status(400).json({ error: "Emoji is required" });
+    }
+
+    let query = { repository: id };
+    if (mongoose.Types.ObjectId.isValid(prId)) {
+      query._id = prId;
+    } else {
+      query.prNumber = parseInt(prId, 10);
+    }
+
+    const pullRequest = await PullRequest.findOne(query);
+    if (!pullRequest) {
+      return res.status(404).json({ error: "Pull request not found" });
+    }
+
+    let targetReactions = pullRequest.reactions;
+    if (commentId) {
+      const comment = (pullRequest.comments || []).id(commentId);
+      if (!comment) return res.status(404).json({ error: "Comment not found" });
+      if (!comment.reactions) comment.reactions = [];
+      targetReactions = comment.reactions;
+    }
+
+    const existingIdx = targetReactions.findIndex((r) => r.emoji === emoji);
+    if (existingIdx >= 0) {
+      const uIdx = targetReactions[existingIdx].users.findIndex(
+        (u) => u.toString() === userId.toString()
+      );
+      if (uIdx >= 0) {
+        targetReactions[existingIdx].users.splice(uIdx, 1);
+        if (targetReactions[existingIdx].users.length === 0) {
+          targetReactions.splice(existingIdx, 1);
+        }
+      } else {
+        targetReactions[existingIdx].users.push(userId);
+      }
+    } else {
+      targetReactions.push({ emoji, users: [userId] });
+    }
+
+    await pullRequest.save();
+
+    const populated = await PullRequest.findById(pullRequest._id)
+      .populate("reactions.users", "username")
+      .populate("comments.reactions.users", "username");
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("repo_" + id).emit("pr_reaction", {
+        prId: pullRequest._id,
+        reactions: commentId ? populated.comments.id(commentId).reactions : populated.reactions,
+      });
+    }
+
+    res.json({
+      message: "Reaction toggled",
+      reactions: commentId ? populated.comments.id(commentId).reactions : populated.reactions,
+    });
+  } catch (err) {
+    console.error("Error toggling PR reaction:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 module.exports = {
+  togglePRReaction,
   createPullRequest,
   getRepoPullRequests,
   getPullRequestById,

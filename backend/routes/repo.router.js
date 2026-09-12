@@ -27,6 +27,11 @@ repoRouter.get("/repo/:id/branches", repoController.getBranches);
 repoRouter.post("/repo/:id/branches", authMiddleware, repoController.createBranch);
 repoRouter.delete("/repo/:id/branches/:branchName", authMiddleware, repoController.deleteBranch);
 
+// --- Phase 3: Collaborators Management ---
+repoRouter.get("/repo/:id/collaborators", repoController.getCollaborators);
+repoRouter.post("/repo/:id/collaborators", authMiddleware, repoController.addCollaborator);
+repoRouter.delete("/repo/:id/collaborators/:userId", authMiddleware, repoController.removeCollaborator);
+
 // ── Protected: login required ─────────────────────────────────────────────────
 repoRouter.post("/repo/create", authMiddleware, validateCreateRepo, validate, repoController.createRepository);
 repoRouter.post("/repo/:id/commit", authMiddleware, validateRecordCommit, validate, repoController.recordCommit);

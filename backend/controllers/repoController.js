@@ -970,7 +970,161 @@ const createOrUpdateFile = async (req, res) => {
   }
 };
 
+
+// ── Collaborators Management ──────────────────────────────────────────────────
+const getCollaborators = async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid repository ID" });
+    }
+    const repo = await Repository.findById(id).populate(
+      "collaborators.user",
+      "username email avatar"
+    );
+    if (!repo) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+    res.json({ collaborators: repo.collaborators || [] });
+  } catch (err) {
+    console.error("Error fetching collaborators:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const addCollaborator = async (req, res) => {
+  const { id } = req.params;
+  const { username, role = "write" } = req.body;
+  const userId = req.user;
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid repository ID" });
+    }
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+
+    const repo = await Repository.findById(id);
+    if (!repo) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+
+    const isOwner = repo.owner.toString() === userId.toString();
+    const userCollab = (repo.collaborators || []).find((c) => c.user.toString() === userId.toString());
+    const isAdmin = userCollab && userCollab.role === "admin";
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: "Only repository owner or admins can manage collaborators" });
+    }
+
+    const targetUser = await User.findOne({ username: username.trim() });
+    if (!targetUser) {
+      return res.status(404).json({ error: `User '${username.trim()}' not found` });
+    }
+
+    if (targetUser._id.toString() === repo.owner.toString()) {
+      return res.status(400).json({ error: "Repository owner cannot be added as a collaborator" });
+    }
+
+    if (!repo.collaborators) repo.collaborators = [];
+    const existingIdx = repo.collaborators.findIndex(
+      (c) => c.user.toString() === targetUser._id.toString()
+    );
+
+    if (existingIdx >= 0) {
+      repo.collaborators[existingIdx].role = role;
+    } else {
+      repo.collaborators.push({
+        user: targetUser._id,
+        role,
+        addedAt: new Date(),
+      });
+    }
+
+    await repo.save();
+
+    const populatedRepo = await Repository.findById(id).populate(
+      "collaborators.user",
+      "username email avatar"
+    );
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("repo_" + id).emit("activity", {
+        type: "collaborator_added",
+        repoName: repo.name,
+        username: targetUser.username,
+        role,
+        timestamp: new Date().toISOString(),
+      });
+
+      const inviter = await User.findById(userId);
+      sendNotification(io, {
+        recipient: targetUser._id,
+        sender: userId,
+        type: "collaborator",
+        title: "Collaborator Added",
+        message: `${inviter ? inviter.username : "A user"} added you as a ${role} collaborator on ${repo.name}`,
+        link: `/repo/${id}`,
+      });
+    }
+
+    res.status(201).json({
+      message: `Collaborator ${targetUser.username} added successfully`,
+      collaborators: populatedRepo.collaborators,
+    });
+  } catch (err) {
+    console.error("Error adding collaborator:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const removeCollaborator = async (req, res) => {
+  const { id, userId: targetUserId } = req.params;
+  const currentUserId = req.user;
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ error: "Invalid ID parameter" });
+    }
+
+    const repo = await Repository.findById(id);
+    if (!repo) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+
+    const isOwner = repo.owner.toString() === currentUserId.toString();
+    const userCollab = (repo.collaborators || []).find((c) => c.user.toString() === currentUserId.toString());
+    const isAdmin = userCollab && userCollab.role === "admin";
+    if (!isOwner && !isAdmin && currentUserId.toString() !== targetUserId) {
+      return res.status(403).json({ error: "Unauthorized to remove collaborator" });
+    }
+
+    repo.collaborators = (repo.collaborators || []).filter(
+      (c) => c.user.toString() !== targetUserId
+    );
+
+    await repo.save();
+
+    const populatedRepo = await Repository.findById(id).populate(
+      "collaborators.user",
+      "username email avatar"
+    );
+
+    res.json({
+      message: "Collaborator removed successfully",
+      collaborators: populatedRepo.collaborators,
+    });
+  } catch (err) {
+    console.error("Error removing collaborator:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
 module.exports = {
+  getCollaborators,
+  addCollaborator,
+  removeCollaborator,
   createRepository,
   getAllRepositories,
   searchRepositories,

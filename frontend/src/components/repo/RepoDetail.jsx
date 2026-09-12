@@ -10,6 +10,7 @@ import BranchDropdown from "./BranchDropdown";
 import PullRequestList from "./PullRequestList";
 import PullRequestDetail from "./PullRequestDetail";
 import NewPullRequestModal from "./NewPullRequestModal";
+import ReactionPicker from "../ReactionPicker";
 import "./repoDetail.css";
 
 const RepoDetail = () => {
@@ -28,6 +29,11 @@ const RepoDetail = () => {
   const [activeBranch, setActiveBranch] = useState("main");
   const [branches, setBranches] = useState([{ name: "main" }]);
 
+  // Collaborators State
+  const [collaborators, setCollaborators] = useState([]);
+  const [newCollabUsername, setNewCollabUsername] = useState("");
+  const [newCollabRole, setNewCollabRole] = useState("write");
+  const [collabLoading, setCollabLoading] = useState(false);
   // Pull Requests State
   const [pullRequests, setPullRequests] = useState([]);
   const [prCounts, setPrCounts] = useState({ openCount: 0, closedCount: 0, mergedCount: 0, totalCount: 0 });
@@ -100,6 +106,12 @@ const RepoDetail = () => {
         console.warn("Tree fetch error:", treeErr);
       }
 
+      
+      // Fetch collaborators
+      try {
+        const collabRes = await api.get(`/repo/${id}/collaborators`);
+        setCollaborators(collabRes.data?.collaborators || []);
+      } catch {}
       // Fetch pull requests
       try {
         const prRes = await api.get(`/repo/${id}/pulls?status=all`);
@@ -353,6 +365,50 @@ const RepoDetail = () => {
     }
   };
 
+
+  const handleAddCollaborator = async (e) => {
+    e.preventDefault();
+    if (!newCollabUsername.trim()) return;
+
+    try {
+      setCollabLoading(true);
+      const res = await api.post(`/repo/${id}/collaborators`, {
+        username: newCollabUsername.trim(),
+        role: newCollabRole,
+      });
+      setCollaborators(res.data.collaborators || []);
+      setNewCollabUsername("");
+      setSettingsMessage(`Collaborator ${newCollabUsername} added successfully!`);
+      setTimeout(() => setSettingsMessage(""), 3000);
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to add collaborator.");
+    } finally {
+      setCollabLoading(false);
+    }
+  };
+
+  const handleRemoveCollaborator = async (userId) => {
+    if (!window.confirm("Are you sure you want to remove this collaborator?")) return;
+    try {
+      const res = await api.delete(`/repo/${id}/collaborators/${userId}`);
+      setCollaborators(res.data.collaborators || []);
+      setSettingsMessage("Collaborator removed.");
+      setTimeout(() => setSettingsMessage(""), 3000);
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to remove collaborator.");
+    }
+  };
+
+  const handleReactIssue = async (issueId, emoji) => {
+    try {
+      const res = await api.post(`/issue/${issueId}/react`, { emoji });
+      setIssues((prev) =>
+        prev.map((iss) => (iss._id === issueId ? { ...iss, reactions: res.data.reactions } : iss))
+      );
+    } catch (err) {
+      console.error("Error reacting to issue:", err);
+    }
+  };
   const handleToggleStar = async () => {
     if (!currentUserId) {
       alert("Please log in to star this repository.");
@@ -759,6 +815,13 @@ safearchive push`}
                       <div className="issue-meta">
                         Created: {new Date(issue.createdAt).toLocaleDateString()}
                       </div>
+                      <div style={{ marginTop: "8px" }}>
+                        <ReactionPicker
+                          reactions={issue.reactions}
+                          currentUserId={currentUserId}
+                          onReact={(emoji) => handleReactIssue(issue._id, emoji)}
+                        />
+                      </div>
                     </div>
 
                     <div className="issue-actions">
@@ -827,6 +890,92 @@ safearchive push`}
               <button className="btn-secondary" onClick={handleToggleVisibility}>
                 Make {repo.visibility === "public" ? "Private" : "Public"}
               </button>
+            </section>
+
+            <section className="settings-section">
+              <h3>Manage Collaborators</h3>
+              <p style={{ fontSize: "0.85rem", color: "#8b949e", marginBottom: "14px" }}>
+                Invite collaborators to this repository with read, write, or admin permissions.
+              </p>
+
+              {/* Add Collaborator Form */}
+              <form onSubmit={handleAddCollaborator} style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  placeholder="Enter username to invite..."
+                  value={newCollabUsername}
+                  onChange={(e) => setNewCollabUsername(e.target.value)}
+                  style={{
+                    flex: 1,
+                    minWidth: "180px",
+                    padding: "7px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid #30363d",
+                    backgroundColor: "#0d1117",
+                    color: "#c9d1d9",
+                    fontSize: "0.88rem",
+                  }}
+                />
+                <select
+                  value={newCollabRole}
+                  onChange={(e) => setNewCollabRole(e.target.value)}
+                  className="pr-branch-select"
+                >
+                  <option value="write">Write (can push/PR)</option>
+                  <option value="read">Read (view only)</option>
+                  <option value="admin">Admin (full access)</option>
+                </select>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={collabLoading || !newCollabUsername.trim()}
+                >
+                  {collabLoading ? "Adding..." : "+ Add Collaborator"}
+                </button>
+              </form>
+
+              {/* Collaborators List */}
+              <div className="collaborators-card-list">
+                {collaborators.length === 0 ? (
+                  <div style={{ fontSize: "0.85rem", color: "#8b949e", padding: "8px 0" }}>
+                    No outside collaborators have been added yet.
+                  </div>
+                ) : (
+                  collaborators.map((c) => {
+                    const collabUser = c.user;
+                    if (!collabUser) return null;
+                    return (
+                      <div key={collabUser._id} className="collaborator-row">
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span className="comment-avatar-placeholder" style={{ backgroundColor: "#1f6feb" }}>
+                            {collabUser.username ? collabUser.username[0].toUpperCase() : "U"}
+                          </span>
+                          <div>
+                            <strong style={{ color: "#f0f6fc", fontSize: "0.9rem" }}>
+                              {collabUser.username}
+                            </strong>
+                            <span style={{ fontSize: "0.78rem", color: "#8b949e", marginLeft: "8px" }}>
+                              {collabUser.email}
+                            </span>
+                          </div>
+                          <span className="branch-default-badge" style={{ textTransform: "capitalize", marginLeft: "6px" }}>
+                            {c.role}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ color: "#ff7b72", borderColor: "#da3633" }}
+                          onClick={() => handleRemoveCollaborator(collabUser._id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </section>
 
             <section className="settings-section danger-zone">

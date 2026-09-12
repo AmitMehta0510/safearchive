@@ -26,6 +26,13 @@ const RepositorySchema = new Schema(
         createdBy: { type: Schema.Types.ObjectId, ref: "User" },
       },
     ],
+    collaborators: [
+      {
+        user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+        role: { type: String, enum: ["read", "write", "admin"], default: "write" },
+        addedAt: { type: Date, default: Date.now },
+      },
+    ],
     content: [
       {
         type: String,

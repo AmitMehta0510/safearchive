@@ -14,4 +14,7 @@ prRouter.post("/repo/:id/pulls/:prId/comments", authMiddleware, prController.add
 prRouter.post("/repo/:id/pulls/:prId/merge", authMiddleware, prController.mergePullRequest);
 prRouter.patch("/repo/:id/pulls/:prId/status", authMiddleware, prController.togglePRStatus);
 
+// ── Reactions ─────────────────────────────────────────────────────────────────
+prRouter.post("/repo/:id/pulls/:prId/react", authMiddleware, prController.togglePRReaction);
+
 module.exports = prRouter;
