@@ -51,7 +51,7 @@ const RepoDetail = () => {
 
       // Fetch issues
       const issueRes = await api.get(`/issue/repo/${id}`);
-      setIssues(issueRes.data || []);
+      setIssues(issueRes.data?.issues || issueRes.data || []);
 
       // Fetch commits
       const commitRes = await api.get(`/repo/${id}/commits`);

@@ -31,7 +31,7 @@ const Dashboard = () => {
         }
 
         const suggestedRes = await api.get(`/repo/all`);
-        setSuggestedRepositories(suggestedRes.data || []);
+        setSuggestedRepositories(suggestedRes.data?.repositories || suggestedRes.data || []);
       } catch (err) {
         console.error("Error while fetching repositories: ", err);
       } finally {
