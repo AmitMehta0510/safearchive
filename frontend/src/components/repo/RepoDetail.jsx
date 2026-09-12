@@ -6,6 +6,10 @@ import FileTree from "./FileTree";
 import CodeViewer from "./CodeViewer";
 import ReadmeViewer from "./ReadmeViewer";
 import CommitDiffViewer from "./CommitDiffViewer";
+import BranchDropdown from "./BranchDropdown";
+import PullRequestList from "./PullRequestList";
+import PullRequestDetail from "./PullRequestDetail";
+import NewPullRequestModal from "./NewPullRequestModal";
 import "./repoDetail.css";
 
 const RepoDetail = () => {
@@ -18,7 +22,18 @@ const RepoDetail = () => {
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("code"); // "code" | "commits" | "issues" | "settings"
+  const [activeTab, setActiveTab] = useState("code"); // "code" | "commits" | "pulls" | "issues" | "settings"
+
+  // Multi-Branch State
+  const [activeBranch, setActiveBranch] = useState("main");
+  const [branches, setBranches] = useState([{ name: "main" }]);
+
+  // Pull Requests State
+  const [pullRequests, setPullRequests] = useState([]);
+  const [prCounts, setPrCounts] = useState({ openCount: 0, closedCount: 0, mergedCount: 0, totalCount: 0 });
+  const [prFilter, setPrFilter] = useState("open");
+  const [selectedPR, setSelectedPR] = useState(null);
+  const [isNewPRModalOpen, setIsNewPRModalOpen] = useState(false);
 
   // Code Explorer & File Viewer State
   const [selectedFile, setSelectedFile] = useState(null);
@@ -64,18 +79,48 @@ const RepoDetail = () => {
       setRepo(repoData);
       setNewDescription(repoData?.description || "");
 
-      const issueRes = await api.get(`/issue/repo/${id}`);
-      setIssues(issueRes.data?.issues || issueRes.data || []);
-
-      const commitRes = await api.get(`/repo/${id}/commits`);
-      setCommits(commitRes.data || []);
-
+      // Fetch branches
       try {
-        const treeRes = await api.get(`/repo/${id}/tree`);
+        const branchRes = await api.get(`/repo/${id}/branches`);
+        const branchList = branchRes.data?.branches || [{ name: "main" }];
+        setBranches(branchList);
+        const defBranch = branchRes.data?.defaultBranch || "main";
+        if (!activeBranch || activeBranch === "main") {
+          setActiveBranch(defBranch);
+        }
+      } catch (branchErr) {
+        console.warn("Branch fetch error:", branchErr);
+      }
+
+      // Fetch tree for current branch
+      try {
+        const treeRes = await api.get(`/repo/${id}/tree?branch=${encodeURIComponent(activeBranch || "main")}`);
         setTree(treeRes.data?.tree || []);
       } catch (treeErr) {
         console.warn("Tree fetch error:", treeErr);
       }
+
+      // Fetch pull requests
+      try {
+        const prRes = await api.get(`/repo/${id}/pulls?status=all`);
+        setPullRequests(prRes.data?.pullRequests || []);
+        setPrCounts({
+          openCount: prRes.data?.openCount || 0,
+          closedCount: prRes.data?.closedCount || 0,
+          mergedCount: prRes.data?.mergedCount || 0,
+          totalCount: prRes.data?.totalCount || 0,
+        });
+      } catch (prErr) {
+        console.warn("PR fetch error:", prErr);
+      }
+
+      // Fetch issues
+      const issueRes = await api.get(`/issue/repo/${id}`);
+      setIssues(issueRes.data?.issues || issueRes.data || []);
+
+      // Fetch commits
+      const commitRes = await api.get(`/repo/${id}/commits`);
+      setCommits(commitRes.data || []);
 
       if (currentUserId) {
         try {
@@ -90,14 +135,18 @@ const RepoDetail = () => {
     } finally {
       setLoading(false);
     }
-  }, [id, currentUserId]);
+  }, [id, currentUserId, activeBranch]);
 
   useEffect(() => {
     fetchRepoData();
   }, [fetchRepoData]);
 
+  // Load README when tree or branch changes
   useEffect(() => {
-    if (!tree || tree.length === 0) return;
+    if (!tree || tree.length === 0) {
+      setReadmeContent("");
+      return;
+    }
     const hasReadme = tree.some((item) =>
       item.path.toLowerCase().endsWith("readme.md")
     );
@@ -107,21 +156,47 @@ const RepoDetail = () => {
       ).path;
 
       api
-        .get(`/repo/${id}/file?path=${encodeURIComponent(readmePath)}`)
+        .get(`/repo/${id}/file?path=${encodeURIComponent(readmePath)}&branch=${encodeURIComponent(activeBranch)}`)
         .then((res) => {
           if (res.data?.content) {
             setReadmeContent(res.data.content);
           }
         })
         .catch(() => {});
+    } else {
+      setReadmeContent("");
     }
-  }, [id, tree]);
+  }, [id, tree, activeBranch]);
+
+  const handleSelectBranch = async (branchName) => {
+    setActiveBranch(branchName);
+    setSelectedFile(null);
+    setFileData(null);
+    try {
+      const treeRes = await api.get(`/repo/${id}/tree?branch=${encodeURIComponent(branchName)}`);
+      setTree(treeRes.data?.tree || []);
+    } catch (err) {
+      console.warn("Branch tree fetch error:", err);
+    }
+  };
+
+  const handleCreateBranch = async (branchName) => {
+    await api.post(`/repo/${id}/branches`, {
+      name: branchName,
+      fromBranch: activeBranch,
+    });
+    const branchRes = await api.get(`/repo/${id}/branches`);
+    setBranches(branchRes.data?.branches || [{ name: "main" }]);
+    handleSelectBranch(branchName);
+  };
 
   const handleSelectFile = async (filePath) => {
     try {
       setFileLoading(true);
       setSelectedFile(filePath);
-      const res = await api.get(`/repo/${id}/file?path=${encodeURIComponent(filePath)}`);
+      const res = await api.get(
+        `/repo/${id}/file?path=${encodeURIComponent(filePath)}&branch=${encodeURIComponent(activeBranch)}`
+      );
       setFileData(res.data);
     } catch (err) {
       alert("Failed to load file content: " + (err.response?.data?.error || err.message));
@@ -138,7 +213,10 @@ const RepoDetail = () => {
 
   const handleDownloadZip = () => {
     const apiBase = api.defaults.baseURL || "http://localhost:3000";
-    window.open(`${apiBase}/repo/${id}/archive/zip`, "_blank");
+    window.open(
+      `${apiBase}/repo/${id}/archive/zip?branch=${encodeURIComponent(activeBranch)}`,
+      "_blank"
+    );
   };
 
   const handleAddFile = async (e) => {
@@ -149,6 +227,7 @@ const RepoDetail = () => {
       await api.post(`/repo/${id}/file`, {
         path: newFileName.trim(),
         content: newFileContent,
+        branch: activeBranch,
         message: newFileCommitMsg.trim() || `Create ${newFileName.trim()}`,
       });
 
@@ -156,12 +235,13 @@ const RepoDetail = () => {
       setNewFileContent("");
       setNewFileCommitMsg("");
       setIsFileModalOpen(false);
-      fetchRepoData();
+      handleSelectBranch(activeBranch);
     } catch (err) {
       alert("Failed to save file: " + (err.response?.data?.error || err.message));
     }
   };
-﻿  const handleCreateIssue = async (e) => {
+
+  const handleCreateIssue = async (e) => {
     e.preventDefault();
     if (!newIssueTitle.trim()) return;
 
@@ -210,7 +290,7 @@ const RepoDetail = () => {
 
     const filesArray = newCommitFilesInput
       ? newCommitFilesInput.split(",").map((f) => f.trim()).filter(Boolean)
-      : (repo.content || []).slice(0, 3);
+      : (tree || []).slice(0, 3).map((f) => f.path);
 
     const randomHex = Math.random().toString(16).substring(2, 10);
 
@@ -219,6 +299,7 @@ const RepoDetail = () => {
         commitID: randomHex,
         message: newCommitMsg.trim(),
         files: filesArray,
+        branch: activeBranch,
       });
 
       setCommits([res.data.commit, ...commits]);
@@ -286,7 +367,7 @@ const RepoDetail = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !repo) {
     return (
       <>
         <Navbar />
@@ -317,6 +398,11 @@ const RepoDetail = () => {
     return true;
   });
 
+  const filteredPullRequests = pullRequests.filter((pr) => {
+    if (prFilter === "all") return true;
+    return pr.status === prFilter;
+  });
+
   const openCount = issues.filter((i) => i.status === "open").length;
   const isOwner = repo.owner?._id === currentUserId || repo.owner === currentUserId;
 
@@ -338,6 +424,13 @@ const RepoDetail = () => {
             </div>
 
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <BranchDropdown
+                branches={branches}
+                activeBranch={activeBranch}
+                onSelectBranch={handleSelectBranch}
+                onCreateBranch={handleCreateBranch}
+              />
+
               <button
                 className="btn-secondary"
                 onClick={handleToggleStar}
@@ -356,7 +449,7 @@ const RepoDetail = () => {
               <button
                 className="btn-secondary"
                 onClick={handleDownloadZip}
-                title="Download repository as ZIP"
+                title={`Download ${activeBranch} as ZIP`}
               >
                 <svg height="14" viewBox="0 0 16 16" width="14" fill="#8b949e" style={{ marginRight: "6px" }}>
                   <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path>
@@ -398,10 +491,24 @@ const RepoDetail = () => {
           </button>
           <button
             className={`repo-tab ${activeTab === "commits" ? "active" : ""}`}
-            onClick={() => setActiveTab("commits")}
+            onClick={() => {
+              setActiveTab("commits");
+              setSelectedCommitDiff(null);
+            }}
           >
             Commits
             <span className="tab-counter">{commits.length}</span>
+          </button>
+          <button
+            className={`repo-tab ${activeTab === "pulls" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("pulls");
+              setSelectedCommitDiff(null);
+              setSelectedFile(null);
+            }}
+          >
+            Pull requests
+            <span className="tab-counter">{prCounts.openCount || 0}</span>
           </button>
           <button
             className={`repo-tab ${activeTab === "issues" ? "active" : ""}`}
@@ -425,7 +532,8 @@ const RepoDetail = () => {
             </button>
           )}
         </nav>
-﻿        {/* TAB 1: CODE & FILES */}
+
+        {/* TAB 1: CODE & FILES */}
         {activeTab === "code" && (
           <main>
             {selectedFile ? (
@@ -447,7 +555,6 @@ const RepoDetail = () => {
               )
             ) : (
               <>
-                {/* File Tree Explorer */}
                 <FileTree
                   tree={tree}
                   onSelectFile={handleSelectFile}
@@ -459,131 +566,146 @@ const RepoDetail = () => {
                   }}
                   onDownloadZip={handleDownloadZip}
                   repoName={repo.name}
+                  branch={activeBranch}
                 />
 
-                {/* README Markdown Section */}
                 {readmeContent && (
                   <ReadmeViewer content={readmeContent} repoName={repo.name} />
                 )}
 
-                {/* Quick Setup with SafeArchive CLI */}
                 <section className="cli-banner" style={{ marginTop: "24px" }}>
                   <h4>Quick Setup & Remote Sync with SafeArchive CLI</h4>
-                  <p style={{ fontSize: "0.85rem", color: "#8b949e", margin: "0 0 10px 0" }}>
-                    Connect your local workspace to this cloud repository:
+                  <p style={{ fontSize: "0.85rem", color: "#8b949e", margin: "4px 0 12px 0" }}>
+                    Get started with your terminal using SafeArchive CLI commands on branch <code>{activeBranch}</code>:
                   </p>
-                  <div className="cli-code-block">
-                    safearchive init<br />
-                    safearchive remote {repo._id}<br />
-                    safearchive add .<br />
-                    safearchive commit "Initial commit"<br />
-                    safearchive push
-                  </div>
+                  <pre className="cli-code-block">
+                    <code>
+{`# 1. Initialize SafeArchive in your local workspace
+safearchive init
+
+# 2. Stage and commit your files
+safearchive add .
+safearchive commit "Initial commit"
+
+# 3. Push snapshots directly to SafeArchive vault
+safearchive push`}
+                    </code>
+                  </pre>
                 </section>
               </>
             )}
           </main>
         )}
 
-        {/* TAB 2: COMMITS EXPLORER */}
+        {/* TAB 2: COMMITS & DIFF VIEWER */}
         {activeTab === "commits" && (
           <main>
             {selectedCommitDiff ? (
               <CommitDiffViewer
-                repoId={id}
-                commitId={selectedCommitDiff}
-                onClose={() => setSelectedCommitDiff(null)}
+                diffData={selectedCommitDiff}
+                onBack={() => setSelectedCommitDiff(null)}
               />
             ) : (
-              <>
-                <div className="issues-toolbar">
+              <div className="commits-view">
+                <div className="commits-header-row">
                   <div>
-                    <h4 style={{ margin: 0, color: "#f0f6fc" }}>
-                      Commit Revision Timeline ({commits.length})
-                    </h4>
-                    <p style={{ margin: "4px 0 0 0", color: "#8b949e", fontSize: "0.85rem" }}>
-                      Click any commit to view visual file diffs and additions/deletions.
-                    </p>
+                    <h3 style={{ margin: 0, color: "#f0f6fc" }}>Commit History</h3>
+                    <span style={{ fontSize: "0.85rem", color: "#8b949e" }}>
+                      Showing revisions on branch <code>{activeBranch}</code>
+                    </span>
                   </div>
-
                   <button
                     className="btn-primary"
-                    onClick={() => setIsCommitModalOpen(true)}
+                    onClick={() => {
+                      setNewCommitMsg("");
+                      setNewCommitFilesInput("");
+                      setIsCommitModalOpen(true);
+                    }}
                   >
-                    + Record Commit
+                    + Record Snapshot
                   </button>
                 </div>
 
-                <section className="content-box">
-                  <div className="content-box-header">
-                    <span>Revision History</span>
-                    <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>Branch: main</span>
-                  </div>
-
+                <div className="commits-timeline">
                   {commits.length === 0 ? (
-                    <div style={{ padding: "40px", textAlign: "center", color: "#8b949e" }}>
-                      <p>No commits recorded yet for this repository.</p>
-                      <p style={{ fontSize: "0.85rem" }}>
-                        Run <code>safearchive commit "message"</code> in your local workspace or click <strong>+ Record Commit</strong>.
-                      </p>
+                    <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
+                      No commits recorded on this branch yet.
                     </div>
                   ) : (
-                    commits.map((c) => (
-                      <div
-                        key={c._id || c.commitID}
-                        className="commit-row"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => setSelectedCommitDiff(c.commitID)}
-                        title="Click to view visual diff"
-                      >
-                        <div className="commit-main">
-                          <h4 className="commit-message" style={{ color: "#58a6ff" }}>
-                            {c.message}
-                          </h4>
+                    commits.map((commit) => (
+                      <div key={commit.commitID} className="commit-row">
+                        <div className="commit-info">
+                          <div className="commit-title-row">
+                            <span className="commit-message">{commit.message}</span>
+                            <span className="commit-badge-branch">{commit.branch || "main"}</span>
+                          </div>
                           <div className="commit-meta">
-                            <span>{repo.owner?.username || "author"} committed</span>
-                            <span>·</span>
-                            <span>{new Date(c.date).toLocaleString()}</span>
-                            {c.files && c.files.length > 0 && (
+                            <span>ID: <code>{commit.commitID}</code></span>
+                            <span className="meta-sep">&bull;</span>
+                            <span>{new Date(commit.date).toLocaleString()}</span>
+                            {commit.files && commit.files.length > 0 && (
                               <>
-                                <span>·</span>
-                                <div style={{ display: "inline-flex", gap: "4px", flexWrap: "wrap" }}>
-                                  {c.files.map((f, i) => (
-                                    <span key={i} className="file-tag">{f}</span>
-                                  ))}
-                                </div>
+                                <span className="meta-sep">&bull;</span>
+                                <span>{commit.files.length} file(s) modified</span>
                               </>
                             )}
                           </div>
                         </div>
-
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span
-                            className="commit-hash-pill"
-                            title="Click to view diff or copy"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard?.writeText(c.commitID);
-                              setSelectedCommitDiff(c.commitID);
-                            }}
-                          >
-                            {(c.commitID || "").slice(0, 8)} ↗
-                          </span>
-                        </div>
+                        <button
+                          className="btn-diff-view"
+                          onClick={async () => {
+                            try {
+                              const diffRes = await api.get(
+                                `/repo/${id}/commits/${commit.commitID}/diff`
+                              );
+                              setSelectedCommitDiff(diffRes.data);
+                            } catch (err) {
+                              alert("Failed to load diff: " + (err.response?.data?.error || err.message));
+                            }
+                          }}
+                        >
+                          View Diff &rarr;
+                        </button>
                       </div>
                     ))
                   )}
-                </section>
-              </>
+                </div>
+              </div>
             )}
           </main>
         )}
 
-        {/* TAB 3: ISSUES */}
+        {/* TAB 3: PULL REQUESTS */}
+        {activeTab === "pulls" && (
+          <main>
+            {selectedPR ? (
+              <PullRequestDetail
+                prId={selectedPR._id || selectedPR.prNumber}
+                repoId={id}
+                onBack={() => {
+                  setSelectedPR(null);
+                  fetchRepoData();
+                }}
+                onUpdated={fetchRepoData}
+              />
+            ) : (
+              <PullRequestList
+                pullRequests={filteredPullRequests}
+                counts={prCounts}
+                activeFilter={prFilter}
+                onChangeFilter={setPrFilter}
+                onSelectPR={(pr) => setSelectedPR(pr)}
+                onNewPR={() => setIsNewPRModalOpen(true)}
+              />
+            )}
+          </main>
+        )}
+
+        {/* TAB 4: ISSUES */}
         {activeTab === "issues" && (
           <main>
-            <div className="issues-toolbar">
-              <div className="issue-filters">
+            <div className="issues-controls">
+              <div className="issue-filter-buttons">
                 <button
                   className={`issue-filter-btn ${issueFilter === "all" ? "active" : ""}`}
                   onClick={() => setIssueFilter("all")}
@@ -594,64 +716,61 @@ const RepoDetail = () => {
                   className={`issue-filter-btn ${issueFilter === "open" ? "active" : ""}`}
                   onClick={() => setIssueFilter("open")}
                 >
-                  Open ({openCount})
+                  Open ({issues.filter((i) => i.status === "open").length})
                 </button>
                 <button
                   className={`issue-filter-btn ${issueFilter === "closed" ? "active" : ""}`}
                   onClick={() => setIssueFilter("closed")}
                 >
-                  Closed ({issues.length - openCount})
+                  Closed ({issues.filter((i) => i.status === "closed").length})
                 </button>
               </div>
 
               <button
                 className="btn-primary"
-                onClick={() => setIsIssueModalOpen(true)}
+                onClick={() => {
+                  setNewIssueTitle("");
+                  setNewIssueDesc("");
+                  setIsIssueModalOpen(true);
+                }}
               >
                 + New Issue
               </button>
             </div>
 
-            <section className="content-box">
-              <div className="content-box-header">
-                <span>Issues Tracker</span>
-                <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>
-                  {filteredIssues.length} issue(s) shown
-                </span>
-              </div>
-
+            <div className="issues-list">
               {filteredIssues.length === 0 ? (
-                <div style={{ padding: "40px", textAlign: "center", color: "#8b949e" }}>
-                  <p>No issues found for filter: "{issueFilter}".</p>
+                <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
+                  No issues found matching this filter.
                 </div>
               ) : (
-                filteredIssues.map((iss) => (
-                  <div key={iss._id} className="issue-row">
-                    <div className="issue-main">
-                      <div className="issue-title-line">
-                        <span className={`status-badge ${iss.status}`}>
-                          {iss.status === "open" ? "● Open" : "✓ Closed"}
+                filteredIssues.map((issue) => (
+                  <div key={issue._id} className="issue-item">
+                    <div className="issue-info">
+                      <div className="issue-title">
+                        {issue.title}
+                        <span className={`issue-status-badge ${issue.status}`}>
+                          {issue.status}
                         </span>
-                        <h4>{iss.title}</h4>
                       </div>
-                      {iss.description && (
-                        <p className="issue-desc">{iss.description}</p>
+                      {issue.description && (
+                        <p className="issue-desc">{issue.description}</p>
                       )}
-                      <span className="issue-date">
-                        Opened {new Date(iss.createdAt).toLocaleDateString()}
-                      </span>
+                      <div className="issue-meta">
+                        Created: {new Date(issue.createdAt).toLocaleDateString()}
+                      </div>
                     </div>
 
                     <div className="issue-actions">
                       <button
-                        className="btn-secondary btn-sm"
-                        onClick={() => handleToggleIssueStatus(iss._id, iss.status)}
+                        className="btn-secondary"
+                        onClick={() => handleToggleIssueStatus(issue._id, issue.status)}
                       >
-                        {iss.status === "open" ? "Close" : "Reopen"}
+                        {issue.status === "open" ? "Close Issue" : "Reopen Issue"}
                       </button>
                       <button
-                        className="btn-danger btn-sm"
-                        onClick={() => handleDeleteIssue(iss._id)}
+                        className="btn-danger"
+                        onClick={() => handleDeleteIssue(issue._id)}
                       >
                         Delete
                       </button>
@@ -659,79 +778,78 @@ const RepoDetail = () => {
                   </div>
                 ))
               )}
-            </section>
+            </div>
           </main>
         )}
 
-        {/* TAB 4: SETTINGS */}
+        {/* TAB 5: SETTINGS */}
         {activeTab === "settings" && isOwner && (
-          <main className="settings-panel">
+          <main className="settings-tab">
             {settingsMessage && (
-              <div className="settings-toast">{settingsMessage}</div>
+              <div className="settings-alert-success">{settingsMessage}</div>
             )}
 
-            <div className="settings-card">
-              <h4>Repository Visibility</h4>
-              <p style={{ color: "#8b949e", fontSize: "0.9rem" }}>
-                Current status: <strong style={{ color: "#f0f6fc" }}>{repo.visibility}</strong>.
-                {repo.visibility === "public"
-                  ? " Anyone on the internet can see this vault."
-                  : " Only you can access this vault."}
-              </p>
-              <button
-                className="btn-secondary"
-                onClick={handleToggleVisibility}
-              >
-                Switch to {repo.visibility === "public" ? "Private" : "Public"}
-              </button>
-            </div>
-
-            <div className="settings-card">
-              <h4>Repository Description</h4>
+            <section className="settings-section">
+              <h3>Repository Details</h3>
               <form onSubmit={handleUpdateDescription}>
-                <textarea
-                  rows={3}
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Describe your project..."
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    borderRadius: "6px",
-                    border: "1px solid #30363d",
-                    backgroundColor: "#0d1117",
-                    color: "#c9d1d9",
-                    boxSizing: "border-box",
-                    marginBottom: "12px",
-                  }}
-                />
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                    Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    placeholder="Short description about this project..."
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #30363d",
+                      backgroundColor: "#0d1117",
+                      color: "#c9d1d9",
+                      boxSizing: "border-box",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
                 <button type="submit" className="btn-primary">
-                  Save Description
+                  Save Changes
                 </button>
               </form>
-            </div>
+            </section>
 
-            <div className="settings-card danger-zone">
-              <h4 style={{ color: "#f85149" }}>Danger Zone</h4>
-              <p style={{ color: "#8b949e", fontSize: "0.9rem" }}>
-                Once you delete a repository, there is no going back. All tracked snapshots and issues will be permanently removed.
+            <section className="settings-section">
+              <h3>Visibility</h3>
+              <p style={{ fontSize: "0.85rem", color: "#8b949e", marginBottom: "12px" }}>
+                Current visibility: <strong>{repo.visibility}</strong>.
+              </p>
+              <button className="btn-secondary" onClick={handleToggleVisibility}>
+                Make {repo.visibility === "public" ? "Private" : "Public"}
+              </button>
+            </section>
+
+            <section className="settings-section danger-zone">
+              <h3 style={{ color: "#ff7b72" }}>Danger Zone</h3>
+              <p style={{ fontSize: "0.85rem", color: "#8b949e", marginBottom: "12px" }}>
+                Once you delete a repository, there is no going back. Please be certain.
               </p>
               <button className="btn-danger" onClick={handleDeleteRepository}>
-                Delete this repository
+                Delete Repository
               </button>
-            </div>
+            </section>
           </main>
         )}
 
         {/* MODAL: ADD / EDIT FILE */}
         {isFileModalOpen && (
           <div className="modal-overlay" onClick={() => setIsFileModalOpen(false)}>
-            <div className="modal-content" style={{ maxWidth: "680px" }} onClick={(e) => e.stopPropagation()}>
-              <h3>Add or Edit File</h3>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Commit File to '{activeBranch}'</h3>
               <form onSubmit={handleAddFile}>
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
-                    File Name / Path *
+                    File Path *
                   </label>
                   <input
                     type="text"
@@ -804,7 +922,7 @@ const RepoDetail = () => {
                     Cancel
                   </button>
                   <button type="submit" className="btn-primary">
-                    Commit File
+                    Commit to {activeBranch}
                   </button>
                 </div>
               </form>
@@ -816,7 +934,7 @@ const RepoDetail = () => {
         {isCommitModalOpen && (
           <div className="modal-overlay" onClick={() => setIsCommitModalOpen(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Record Commit Snapshot</h3>
+              <h3>Record Commit Snapshot on '{activeBranch}'</h3>
               <form onSubmit={handleCreateCommit}>
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
@@ -944,6 +1062,20 @@ const RepoDetail = () => {
             </div>
           </div>
         )}
+
+        {/* MODAL: NEW PULL REQUEST */}
+        <NewPullRequestModal
+          isOpen={isNewPRModalOpen}
+          onClose={() => setIsNewPRModalOpen(false)}
+          repoId={id}
+          branches={branches}
+          defaultBase={repo?.defaultBranch || "main"}
+          defaultHead={activeBranch}
+          onCreated={(newPR) => {
+            fetchRepoData();
+            setSelectedPR(newPR);
+          }}
+        />
       </div>
     </>
   );

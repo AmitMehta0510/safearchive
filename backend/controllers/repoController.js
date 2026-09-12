@@ -448,8 +448,163 @@ function computeLineDiff(oldStr, newStr) {
 }
 
 // 1. Get Repository Tree
+
+// ── Branch Management ────────────────────────────────────────────────────────
+const getBranches = async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid repository ID" });
+    }
+    const repository = await Repository.findById(id);
+    if (!repository) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+    const defaultBranch = repository.defaultBranch || "main";
+    let branches = repository.branches || [];
+    if (!branches.some((b) => b.name === defaultBranch)) {
+      branches = [{ name: defaultBranch, createdAt: repository.createdAt }, ...branches];
+    }
+    res.json({ defaultBranch, branches });
+  } catch (err) {
+    console.error("Error retrieving branches:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const createBranch = async (req, res) => {
+  const { id } = req.params;
+  const { name, fromBranch } = req.body;
+  const userId = req.user;
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid repository ID" });
+    }
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: "Branch name is required" });
+    }
+    const cleanName = name.trim();
+    if (!/^[a-zA-Z0-9._\-\/]+$/.test(cleanName)) {
+      return res.status(400).json({ error: "Branch name contains invalid characters" });
+    }
+
+    const repository = await Repository.findById(id);
+    if (!repository) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+
+    const defaultBranch = repository.defaultBranch || "main";
+    const baseBranch = fromBranch ? fromBranch.trim() : defaultBranch;
+
+    const existingBranches = repository.branches || [];
+    if (cleanName === defaultBranch || existingBranches.some((b) => b.name === cleanName)) {
+      return res.status(400).json({ error: "Branch '" + cleanName + "' already exists" });
+    }
+
+    const baseFiles = (repository.files || []).filter((f) => (f.branch || "main") === baseBranch);
+    const filesToClone = baseFiles.length > 0
+      ? baseFiles
+      : (repository.files || []).filter((f) => !f.branch || f.branch === defaultBranch);
+
+    for (const f of filesToClone) {
+      repository.files.push({
+        path: f.path,
+        content: f.content,
+        size: f.size,
+        branch: cleanName,
+        lastModified: new Date(),
+        lastCommitMessage: f.lastCommitMessage || "Branch from " + baseBranch,
+      });
+    }
+
+    const baseCommit = (repository.commits || [])
+      .filter((c) => (c.branch || "main") === baseBranch)
+      .slice(-1)[0];
+
+    const newBranch = {
+      name: cleanName,
+      headCommit: baseCommit ? baseCommit.commitID : undefined,
+      createdAt: new Date(),
+      createdBy: userId,
+    };
+
+    if (!repository.branches) repository.branches = [];
+    if (!repository.branches.some((b) => b.name === defaultBranch)) {
+      repository.branches.push({ name: defaultBranch, createdAt: repository.createdAt });
+    }
+    repository.branches.push(newBranch);
+
+    await repository.save();
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("repo_" + id).emit("activity", {
+        type: "branch_created",
+        repoName: repository.name,
+        branch: cleanName,
+        fromBranch: baseBranch,
+        timestamp: new Date().toISOString(),
+      });
+      io.emit("activity", {
+        type: "branch_created",
+        repoName: repository.name,
+        branch: cleanName,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.status(201).json({
+      message: "Branch '" + cleanName + "' created successfully",
+      branch: newBranch,
+    });
+  } catch (err) {
+    console.error("Error creating branch:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+const deleteBranch = async (req, res) => {
+  const { id, branchName } = req.params;
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid repository ID" });
+    }
+    const repository = await Repository.findById(id);
+    if (!repository) {
+      return res.status(404).json({ error: "Repository not found" });
+    }
+    const defaultBranch = repository.defaultBranch || "main";
+    if (branchName === defaultBranch || branchName === "main") {
+      return res.status(400).json({ error: "Cannot delete the default branch" });
+    }
+
+    repository.branches = (repository.branches || []).filter((b) => b.name !== branchName);
+    repository.files = (repository.files || []).filter((f) => f.branch !== branchName);
+
+    await repository.save();
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("repo_" + id).emit("activity", {
+        type: "branch_deleted",
+        repoName: repository.name,
+        branch: branchName,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.json({ message: "Branch '" + branchName + "' deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting branch:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+// 1. Get Repository Tree
 const getRepoTree = async (req, res) => {
   const { id } = req.params;
+  const branchQuery = req.query.branch;
 
   try {
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -461,19 +616,26 @@ const getRepoTree = async (req, res) => {
       return res.status(404).json({ error: "Repository not found" });
     }
 
+    const defaultBranch = repository.defaultBranch || "main";
+    const currentBranch = branchQuery && branchQuery.trim() ? branchQuery.trim() : defaultBranch;
+
+    let branchFiles = (repository.files || []).filter((f) => (f.branch || "main") === currentBranch);
+    if (branchFiles.length === 0 && currentBranch === defaultBranch) {
+      branchFiles = (repository.files || []).filter((f) => !f.branch || f.branch === defaultBranch);
+    }
+
     const filePaths = new Set();
-    (repository.content || []).forEach((f) => filePaths.add(f));
-    (repository.files || []).forEach((f) => filePaths.add(f.path));
-    (repository.commits || []).forEach((c) => {
-      (c.files || []).forEach((f) => filePaths.add(f));
-    });
+    branchFiles.forEach((f) => filePaths.add(f.path));
+    if (currentBranch === defaultBranch) {
+      (repository.content || []).forEach((f) => filePaths.add(f));
+    }
 
     const fileMap = new Map();
-    (repository.files || []).forEach((f) => fileMap.set(f.path, f));
+    branchFiles.forEach((f) => fileMap.set(f.path, f));
 
-    const sortedCommits = [...(repository.commits || [])].sort(
-      (a, b) => new Date(b.date) - new Date(a.date)
-    );
+    const sortedCommits = [...(repository.commits || [])]
+      .filter((c) => !c.branch || c.branch === currentBranch)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const tree = Array.from(filePaths).sort().map((filePath) => {
       const dbFile = fileMap.get(filePath);
@@ -491,7 +653,8 @@ const getRepoTree = async (req, res) => {
     res.json({
       tree,
       totalFiles: tree.length,
-      defaultBranch: "main",
+      defaultBranch,
+      currentBranch,
     });
   } catch (err) {
     console.error("Error retrieving repo tree:", err.message);
@@ -504,6 +667,7 @@ const getFileContent = async (req, res) => {
   const { id } = req.params;
   const filePath = req.query.path;
   const commitID = req.query.commit;
+  const branchQuery = req.query.branch;
 
   try {
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -518,7 +682,16 @@ const getFileContent = async (req, res) => {
       return res.status(404).json({ error: "Repository not found" });
     }
 
-    const dbFile = (repository.files || []).find((f) => f.path === filePath);
+    const defaultBranch = repository.defaultBranch || "main";
+    const currentBranch = branchQuery && branchQuery.trim() ? branchQuery.trim() : defaultBranch;
+
+    let dbFile = (repository.files || []).find(
+      (f) => f.path === filePath && (f.branch || "main") === currentBranch
+    );
+    if (!dbFile && currentBranch === defaultBranch) {
+      dbFile = (repository.files || []).find((f) => f.path === filePath);
+    }
+
     let content = dbFile ? dbFile.content : null;
 
     if (commitID) {
@@ -554,6 +727,7 @@ const getFileContent = async (req, res) => {
       content,
       size,
       language,
+      branch: currentBranch,
       lastModified: dbFile?.lastModified || repository.updatedAt,
       lastCommitMessage: dbFile?.lastCommitMessage || "Update " + filePath,
     });
@@ -634,6 +808,7 @@ const getCommitDiff = async (req, res) => {
 // 4. Download Repo ZIP
 const downloadRepoZip = async (req, res) => {
   const { id } = req.params;
+  const branchQuery = req.query.branch;
 
   try {
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -645,20 +820,30 @@ const downloadRepoZip = async (req, res) => {
       return res.status(404).json({ error: "Repository not found" });
     }
 
+    const targetBranch = branchQuery && branchQuery.trim() ? branchQuery.trim() : (repository.defaultBranch || "main");
     const archive = new ZipArchive({ zlib: { level: 9 } });
-    const zipName = `${repository.name}-main.zip`;
+    const zipName = `${repository.name}-${targetBranch}.zip`;
 
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
 
     archive.pipe(res);
 
+    const branchFiles = (repository.files || []).filter(
+      (f) => (f.branch || "main") === targetBranch
+    );
+    const filesToArchive = branchFiles.length > 0
+      ? branchFiles
+      : (repository.files || []).filter((f) => !f.branch || f.branch === targetBranch);
+
     const filePaths = new Set();
-    (repository.content || []).forEach((f) => filePaths.add(f));
-    (repository.files || []).forEach((f) => filePaths.add(f.path));
+    filesToArchive.forEach((f) => filePaths.add(f.path));
+    if (targetBranch === (repository.defaultBranch || "main")) {
+      (repository.content || []).forEach((f) => filePaths.add(f));
+    }
 
     const fileMap = new Map();
-    (repository.files || []).forEach((f) => fileMap.set(f.path, f.content));
+    filesToArchive.forEach((f) => fileMap.set(f.path, f.content));
 
     for (const filePath of filePaths) {
       let fileContent = fileMap.get(filePath);
@@ -697,7 +882,7 @@ const downloadRepoZip = async (req, res) => {
 // 5. Create or Update File from Web
 const createOrUpdateFile = async (req, res) => {
   const { id } = req.params;
-  const { path: filePath, content = "", message } = req.body;
+  const { path: filePath, content = "", message, branch } = req.body;
 
   try {
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -713,14 +898,18 @@ const createOrUpdateFile = async (req, res) => {
       return res.status(404).json({ error: "Repository not found" });
     }
 
+    const targetBranch = branch && branch.trim() ? branch.trim() : (repository.defaultBranch || "main");
     const commitID = uuidv4().slice(0, 8);
     const commitMsg = message && message.trim() ? message.trim() : `Update ${cleanPath}`;
 
-    const existingFileIndex = (repository.files || []).findIndex((f) => f.path === cleanPath);
+    const existingFileIndex = (repository.files || []).findIndex(
+      (f) => f.path === cleanPath && (f.branch || "main") === targetBranch
+    );
     const fileData = {
       path: cleanPath,
       content,
       size: Buffer.byteLength(content, "utf-8"),
+      branch: targetBranch,
       lastModified: new Date(),
       lastCommitMessage: commitMsg,
     };
@@ -739,6 +928,7 @@ const createOrUpdateFile = async (req, res) => {
       commitID,
       message: commitMsg,
       files: [cleanPath],
+      branch: targetBranch,
       date: new Date(),
     };
     repository.commits.push(newCommit);
@@ -763,6 +953,7 @@ const createOrUpdateFile = async (req, res) => {
         type: "commit_pushed",
         repoName: repository.name,
         commitID,
+        branch: targetBranch,
         message: commitMsg,
         timestamp: new Date().toISOString(),
       });
@@ -791,6 +982,9 @@ module.exports = {
   deleteRepositoryById,
   getRepoCommits,
   recordCommit,
+  getBranches,
+  createBranch,
+  deleteBranch,
   getRepoTree,
   getFileContent,
   getCommitDiff,

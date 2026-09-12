@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+﻿const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
 const RepositorySchema = new Schema(
@@ -13,6 +13,19 @@ const RepositorySchema = new Schema(
       default: "",
       trim: true,
     },
+    defaultBranch: {
+      type: String,
+      default: "main",
+      trim: true,
+    },
+    branches: [
+      {
+        name: { type: String, required: true },
+        headCommit: { type: String },
+        createdAt: { type: Date, default: Date.now },
+        createdBy: { type: Schema.Types.ObjectId, ref: "User" },
+      },
+    ],
     content: [
       {
         type: String,
@@ -23,6 +36,7 @@ const RepositorySchema = new Schema(
         path: { type: String, required: true },
         content: { type: String, default: "" },
         size: { type: Number, default: 0 },
+        branch: { type: String, default: "main" },
         lastModified: { type: Date, default: Date.now },
         lastCommitMessage: { type: String, default: "Add file" },
       },
@@ -43,6 +57,12 @@ const RepositorySchema = new Schema(
         ref: "Issue",
       },
     ],
+    pullRequests: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "PullRequest",
+      },
+    ],
     commits: [
       {
         commitID: {
@@ -57,6 +77,10 @@ const RepositorySchema = new Schema(
           type: Date,
           default: Date.now,
         },
+        branch: {
+          type: String,
+          default: "main",
+        },
         files: [
           {
             type: String,
@@ -69,7 +93,6 @@ const RepositorySchema = new Schema(
 );
 
 // Compound unique index: each user can have only one repo with a given name
-// (just like GitHub: user-a/my-app and user-b/my-app are both valid)
 RepositorySchema.index({ owner: 1, name: 1 }, { unique: true });
 
 const Repository = mongoose.model("Repository", RepositorySchema);
