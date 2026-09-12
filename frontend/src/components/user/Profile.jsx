@@ -48,6 +48,14 @@ const Profile = () => {
   const starredList = userDetails.starRepos || [];
   const repoList = userDetails.repositories || [];
   const followingCount = (userDetails.followedUsers || []).length;
+  const followersCount = userDetails.followersCount || 0;
+
+  const handleSignOut = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("userId");
+    setCurrentUser(null);
+    window.location.href = "/auth";
+  };
 
   return (
     <>
@@ -82,30 +90,6 @@ const Profile = () => {
         </UnderlineNav.Item>
       </UnderlineNav>
 
-      <button
-        onClick={() => {
-          localStorage.removeItem("token");
-          localStorage.removeItem("userId");
-          setCurrentUser(null);
-          window.location.href = "/auth";
-        }}
-        style={{
-          position: "fixed",
-          bottom: "40px",
-          right: "40px",
-          backgroundColor: "#21262d",
-          color: "#f85149",
-          border: "1px solid #30363d",
-          padding: "8px 16px",
-          borderRadius: "6px",
-          cursor: "pointer",
-          zIndex: 100,
-        }}
-        id="logout"
-      >
-        Sign Out
-      </button>
-
       <div className="profile-page-wrapper">
         {/* Left Profile Sidebar */}
         <aside className="user-profile-section">
@@ -134,21 +118,75 @@ const Profile = () => {
             </p>
           </div>
 
+          {/* Followers & Following stats */}
           <div
             className="follower"
-            style={{ display: "flex", gap: "16px", marginTop: "16px", color: "#8b949e", fontSize: "0.85rem" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "16px",
+              color: "#8b949e",
+              fontSize: "0.85rem",
+              flexWrap: "wrap",
+            }}
           >
-            <p style={{ margin: 0 }}>
-              <strong style={{ color: "#f0f6fc" }}>{repoList.length}</strong> Repositories
-            </p>
-            <p style={{ margin: 0 }}>
-              <strong style={{ color: "#f0f6fc" }}>{followingCount}</strong> Following
-            </p>
+            <svg
+              aria-hidden="true"
+              height="16"
+              viewBox="0 0 16 16"
+              width="16"
+              fill="#8b949e"
+            >
+              <path d="M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.234 4.002 4.002 0 0 0-7.864 0 .75.75 0 0 1-1.482-.234A5.509 5.509 0 0 1 2 5.5Zm3.5-2a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM12 10a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 0 2.25-2.25.75.75 0 0 1 1.5 0 3.75 3.75 0 0 1-3.75 3.75.75.75 0 0 1-.75-.75Zm-.75-5.25a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 0 2.25-2.25.75.75 0 0 1 1.5 0 3.75 3.75 0 0 1-3.75 3.75.75.75 0 0 1-.75-.75Z"></path>
+            </svg>
+            <span>
+              <strong style={{ color: "#f0f6fc" }}>{followersCount}</strong> followers
+            </span>
+            <span>·</span>
+            <span>
+              <strong style={{ color: "#f0f6fc" }}>{followingCount}</strong> following
+            </span>
           </div>
+
+          {/* Repositories count */}
+          <div style={{ marginTop: "8px", color: "#8b949e", fontSize: "0.85rem" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" fill="#8b949e">
+                <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.6-1.2-1.6 1.2a.25.25 0 0 1-.4-.2Z"></path>
+              </svg>
+              <strong style={{ color: "#f0f6fc" }}>{repoList.length}</strong> repositories
+            </span>
+          </div>
+
+          {/* Sign Out Button in Sidebar */}
+          <button
+            onClick={handleSignOut}
+            style={{
+              width: "100%",
+              marginTop: "24px",
+              backgroundColor: "#21262d",
+              color: "#f85149",
+              border: "1px solid #30363d",
+              padding: "8px 16px",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "0.88rem",
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              transition: "all 0.2s ease",
+            }}
+            id="logout"
+          >
+            Sign Out
+          </button>
         </aside>
 
         {/* Right Main Content */}
-        <main style={{ flex: 1, textAlign: "left" }}>
+        <main className="profile-main-content">
           {activeTab === "overview" && (
             <div>
               {/* HeatMap Section */}
@@ -157,7 +195,9 @@ const Profile = () => {
               </div>
 
               {/* Repositories Quick Grid */}
-              <h4 style={{ color: "#f0f6fc", marginBottom: "12px" }}>Your SafeArchive Vaults</h4>
+              <h4 style={{ color: "#f0f6fc", marginBottom: "12px", fontSize: "1rem" }}>
+                Your SafeArchive Vaults
+              </h4>
               {repoList.length === 0 ? (
                 <p style={{ color: "#8b949e" }}>No repositories created yet.</p>
               ) : (
@@ -174,11 +214,13 @@ const Profile = () => {
                           backgroundColor: "#161b22",
                           border: "1px solid #30363d",
                           borderRadius: "6px",
-                          padding: "14px",
+                          padding: "16px",
                           color: "#c9d1d9",
+                          display: "block",
+                          transition: "border-color 0.2s ease",
                         }}
                       >
-                        <h4 style={{ margin: "0 0 6px 0", color: "#58a6ff" }}>{rName}</h4>
+                        <h4 style={{ margin: "0 0 6px 0", color: "#58a6ff", fontSize: "1rem" }}>{rName}</h4>
                         <p style={{ margin: 0, color: "#8b949e", fontSize: "0.85rem" }}>
                           {r.description || "SafeArchive cloud vault"}
                         </p>
@@ -192,7 +234,7 @@ const Profile = () => {
 
           {activeTab === "starred" && (
             <div>
-              <h4 style={{ color: "#f0f6fc", marginBottom: "16px" }}>
+              <h4 style={{ color: "#f0f6fc", marginBottom: "16px", fontSize: "1rem" }}>
                 Starred Repositories ({starredList.length})
               </h4>
               {starredList.length === 0 ? (

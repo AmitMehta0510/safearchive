@@ -169,7 +169,11 @@ const getUserProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    res.json(user);
+    const followersCount = await User.countDocuments({ followedUsers: id });
+    res.json({
+      ...user.toObject(),
+      followersCount,
+    });
   } catch (err) {
     console.error("Error fetching user profile:", err.message);
     res.status(500).json({ message: "Server error fetching user profile" });
@@ -338,8 +342,9 @@ const getUserContributions = async (req, res) => {
 
     // Build activity map over 365 days
     const today = new Date();
-    const startDate = new Date();
-    startDate.setDate(today.getDate() - 364);
+    const dayOfWeek = today.getDay();
+    const thisSunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek);
+    const startDate = new Date(thisSunday.getFullYear(), thisSunday.getMonth(), thisSunday.getDate() - 52 * 7);
 
     const activityMap = {};
     let totalContributions = 0;

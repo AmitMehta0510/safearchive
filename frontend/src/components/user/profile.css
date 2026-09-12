@@ -1,105 +1,74 @@
 .profile-page-wrapper {
   display: flex;
-  min-height: 100vh;
-  color: whitesmoke;
+  min-height: calc(100vh - 60px);
+  color: #c9d1d9;
   width: 100%;
-  /* flex-wrap: wrap; */
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+  box-sizing: border-box;
+  gap: 32px;
 }
 
 .user-profile-section {
-  width: 250px;
-  /* min-height: 100vh; */
+  width: 260px;
+  min-width: 240px;
   display: flex;
   flex-direction: column;
-  padding: 40px 10px;
+  padding: 0;
 }
 
-.user-repo-section {
-  margin: 0px auto;
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.user-name {
-  /* width: 250px; */
-  margin: 10px 20px 10px 10px;
-  /* margin: 10px auto; */
+.profile-main-content {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
 }
 
 .profile-image {
-  margin: 10px auto;
-  width: 100px;
-  height: 100px;
+  margin: 0 auto 12px 0;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
-  background-color: grey;
-}
-
-.follow-btn {
-  background-color: #20272d;
-  width: 250px;
-  margin: 10px auto;
-  height: 40px;
-  border-radius: 10px;
-  color: whitesmoke;
+  background-color: #238636;
+  border: 1px solid #30363d;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .follower {
   display: flex;
-  justify-content: center;
-  width: 250px;
-  height: 30px;
-  gap: 10px;
-  margin: 10px auto;
-}
-
-.repo-card-wrapper {
-  margin: 0 auto;
   width: 100%;
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 20px;
-  padding: 40px 20px;
+  margin: 12px 0 0 0;
+  gap: 8px;
 }
 
-.repo {
-  border: 0.5px solid grey;
-  border-radius: 10px;
-  width: 400px;
-  height: 210px;
-  padding: 20px 10px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.repo-name {
-  cursor: pointer;
-  color: #408ced;
-  font-size: 20px;
-}
-
-.description {
-  color: grey;
-  font-size: 15px;
-}
-
-@media screen and (max-width: 750px) {
-  .repo {
-    width: 100%;
-  }
-}
-
-@media screen and (max-width: 570px) {
-  .user-profile-section {
-    margin: auto;
-  }
-
-  .profile-page-wrapper {
-    display: block;
-  }
+#logout {
+  transition: all 0.2s ease;
 }
 
 #logout:hover {
-  border: 1px solid white;
+  background-color: #da3633 !important;
+  color: #ffffff !important;
+  border-color: #f85149 !important;
+}
+
+@media screen and (max-width: 820px) {
+  .profile-page-wrapper {
+    flex-direction: column;
+    padding: 16px;
+    gap: 20px;
+  }
+
+  .user-profile-section {
+    width: 100%;
+    align-items: center;
+    text-align: center;
+  }
+
+  .profile-image {
+    margin: 0 auto 12px auto;
+  }
+
+  .follower {
+    justify-content: center;
+  }
 }

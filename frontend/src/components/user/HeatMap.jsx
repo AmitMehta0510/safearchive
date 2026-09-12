@@ -1,16 +1,47 @@
-﻿import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import HeatMap from "@uiw/react-heat-map";
 import Tooltip from "@uiw/react-tooltip";
 import api from "../../config/api";
 import socket from "../../config/socket";
 
+// Thresholds for existColor:
+// count 0 (< 1) -> #161b22 (dark empty)
+// count 1-2 (< 3) -> #0e4429 (low)
+// count 3-5 (< 6) -> #006d32 (medium)
+// count 6-9 (< 10) -> #26a641 (high)
+// count >= 10 -> #39d353 (max)
 const PANEL_COLORS = {
-  0: "#161b22",
-  1: "#0e4429",
-  2: "#006d32",
-  3: "#26a641",
-  4: "#39d353",
-  5: "#56f06a",
+  1: "#161b22",
+  3: "#0e4429",
+  6: "#006d32",
+  10: "#26a641",
+  15: "#39d353",
+};
+
+const LEGEND_COLORS = ["#161b22", "#0e4429", "#006d32", "#26a641", "#39d353"];
+
+const formatTooltipDate = (dateStr) => {
+  if (!dateStr) return "";
+  const parts = dateStr.includes("/") ? dateStr.split("/") : dateStr.split("-");
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  return dateStr;
+};
+
+const getStartSunday = () => {
+  const today = new Date();
+  const day = today.getDay(); // 0 is Sunday, 6 is Saturday
+  const thisSunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - day);
+  return new Date(thisSunday.getFullYear(), thisSunday.getMonth(), thisSunday.getDate() - 52 * 7);
 };
 
 const HeatMapProfile = ({ userId }) => {
@@ -22,7 +53,6 @@ const HeatMapProfile = ({ userId }) => {
     commitCount: 0,
     issueCount: 0,
   });
-  const [startDate, setStartDate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -32,7 +62,14 @@ const HeatMapProfile = ({ userId }) => {
     if (!targetId) return;
     try {
       const res = await api.get(`/user/contributions/${targetId}`);
-      setActivityData(res.data.data || []);
+      const rawData = res.data.data || [];
+      // Normalize dates to YYYY/M/D to match @uiw/react-heat-map internal format
+      const normalized = rawData.map((item) => ({
+        ...item,
+        date: item.date ? item.date.replace(/-/g, "/") : item.date,
+      }));
+
+      setActivityData(normalized);
       setSummary({
         totalContributions: res.data.totalContributions || 0,
         currentStreak: res.data.currentStreak || 0,
@@ -40,9 +77,6 @@ const HeatMapProfile = ({ userId }) => {
         commitCount: res.data.commitCount || 0,
         issueCount: res.data.issueCount || 0,
       });
-      if (res.data.startDate) {
-        setStartDate(new Date(res.data.startDate));
-      }
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Error fetching contributions:", err);
@@ -56,15 +90,20 @@ const HeatMapProfile = ({ userId }) => {
     fetchContributions();
   }, [fetchContributions]);
 
-  // Real-time socket refresh: re-fetch whenever a relevant activity fires
+  // Real-time socket refresh: re-fetch whenever relevant activity fires
   useEffect(() => {
     if (!targetId) return;
 
-    const REFRESH_EVENTS = ["commit_pushed", "repo_created", "issue_created"];
+    const REFRESH_EVENTS = [
+      "commit_pushed",
+      "repo_created",
+      "issue_created",
+      "repo_starred",
+      "repo_unstarred",
+    ];
 
     const handleActivity = (data) => {
       if (REFRESH_EVENTS.includes(data.type)) {
-        // Small debounce so multiple rapid events only cause one fetch
         setTimeout(() => fetchContributions(), 400);
       }
     };
@@ -116,7 +155,7 @@ const HeatMapProfile = ({ userId }) => {
               color: "#e3b341",
               display: "flex",
               alignItems: "center",
-              gap: "5px",
+              gap: "6px",
             }}
           >
             🔥 {summary.currentStreak} day streak
@@ -129,7 +168,7 @@ const HeatMapProfile = ({ userId }) => {
         style={{
           display: "flex",
           gap: "8px",
-          marginBottom: "14px",
+          marginBottom: "16px",
           flexWrap: "wrap",
         }}
       >
@@ -145,14 +184,14 @@ const HeatMapProfile = ({ userId }) => {
               backgroundColor: "#161b22",
               border: "1px solid #30363d",
               borderRadius: "6px",
-              padding: "8px 14px",
+              padding: "8px 16px",
               textAlign: "center",
-              minWidth: "80px",
+              minWidth: "85px",
             }}
           >
             <div
               style={{
-                fontSize: "1.3rem",
+                fontSize: "1.35rem",
                 fontWeight: 700,
                 color: stat.color,
                 lineHeight: 1.2,
@@ -167,13 +206,13 @@ const HeatMapProfile = ({ userId }) => {
         ))}
       </div>
 
-      {/* Heatmap grid */}
+      {/* Heatmap container */}
       <div
         style={{
           backgroundColor: "#0d1117",
           border: "1px solid #30363d",
           borderRadius: "8px",
-          padding: "20px 20px 12px 20px",
+          padding: "20px 20px 14px 20px",
           overflowX: "auto",
         }}
       >
@@ -182,29 +221,32 @@ const HeatMapProfile = ({ userId }) => {
             Loading activity...
           </div>
         ) : (
-          <HeatMap
-            className="HeatMapProfile"
-            style={{ maxWidth: "840px", color: "#8b949e" }}
-            value={activityData}
-            weekLabels={["", "Mon", "", "Wed", "", "Fri", ""]}
-            startDate={startDate || new Date(Date.now() - 364 * 24 * 60 * 60 * 1000)}
-            rectSize={13}
-            space={3}
-            rectProps={{ rx: 2 }}
-            panelColors={PANEL_COLORS}
-            rectRender={(props, data) => {
-              const count = data.count || 0;
-              const label =
-                count === 0
-                  ? `No activity on ${data.date}`
-                  : `${count} contribution${count > 1 ? "s" : ""} on ${data.date}`;
-              return (
-                <Tooltip placement="top" content={label}>
-                  <rect {...props} />
-                </Tooltip>
-              );
-            }}
-          />
+          <div style={{ width: "825px" }}>
+            <HeatMap
+              className="HeatMapProfile"
+              style={{ width: "825px", color: "#8b949e" }}
+              width={825}
+              value={activityData}
+              weekLabels={["", "Mon", "", "Wed", "", "Fri", ""]}
+              startDate={getStartSunday()}
+              rectSize={12}
+              space={3}
+              rectProps={{ rx: 2 }}
+              panelColors={PANEL_COLORS}
+              rectRender={(props, data) => {
+                const count = data.count || 0;
+                const label =
+                  count === 0
+                    ? `No contributions on ${formatTooltipDate(data.date)}`
+                    : `${count} contribution${count > 1 ? "s" : ""} on ${formatTooltipDate(data.date)}`;
+                return (
+                  <Tooltip placement="top" content={label}>
+                    <rect {...props} />
+                  </Tooltip>
+                );
+              }}
+            />
+          </div>
         )}
 
         {/* Legend */}
@@ -213,12 +255,12 @@ const HeatMapProfile = ({ userId }) => {
             display: "flex",
             alignItems: "center",
             gap: "4px",
-            marginTop: "10px",
+            marginTop: "12px",
             justifyContent: "flex-end",
           }}
         >
           <span style={{ fontSize: "0.72rem", color: "#6e7681", marginRight: "4px" }}>Less</span>
-          {Object.values(PANEL_COLORS).map((color, i) => (
+          {LEGEND_COLORS.map((color, i) => (
             <div
               key={i}
               style={{
@@ -226,6 +268,7 @@ const HeatMapProfile = ({ userId }) => {
                 height: "11px",
                 backgroundColor: color,
                 borderRadius: "2px",
+                border: color === "#161b22" ? "1px solid #30363d" : "none",
               }}
             />
           ))}
