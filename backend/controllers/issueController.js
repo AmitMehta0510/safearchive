@@ -1,36 +1,39 @@
-const mongoose = require("mongoose");
+﻿const mongoose = require("mongoose");
 const Repository = require("../models/repoModel");
 const Issue = require("../models/issueModel");
 
+// ── Helper: parse pagination params ──────────────────────────────────────────
+function getPagination(query) {
+  const page = Math.max(1, parseInt(query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 20));
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+}
+
+// ── Create Issue ──────────────────────────────────────────────────────────────
 const createIssue = async (req, res) => {
   const { title, description, repository: bodyRepo } = req.body;
   const repoId = req.params.id || bodyRepo;
 
   try {
-    if (!title) {
-      return res.status(400).json({ error: "Issue title is required." });
-    }
     if (!repoId || !mongoose.Types.ObjectId.isValid(repoId)) {
       return res.status(400).json({ error: "Valid repository ID is required." });
     }
 
     const issue = new Issue({
-      title,
-      description: description || "",
+      title: title.trim(),
+      description: description ? description.trim() : "",
       repository: repoId,
       status: "open",
     });
 
     const savedIssue = await issue.save();
 
-    // Link issue ID to the repository document
-    await Repository.findByIdAndUpdate(repoId, {
-      $push: { issues: savedIssue._id },
-    });
+    await Repository.findByIdAndUpdate(repoId, { $push: { issues: savedIssue._id } });
 
     const io = req.app.get("io");
     if (io) {
-      io.emit("activity", {
+      io.to("repo_" + repoId).emit("activity", {
         type: "issue_created",
         title: savedIssue.title,
         repoId,
@@ -45,6 +48,7 @@ const createIssue = async (req, res) => {
   }
 };
 
+// ── Update Issue ──────────────────────────────────────────────────────────────
 const updateIssueById = async (req, res) => {
   const { id } = req.params;
   const { title, description, status } = req.body;
@@ -57,15 +61,15 @@ const updateIssueById = async (req, res) => {
     const issue = await Issue.findById(id);
     if (!issue) return res.status(404).json({ error: "Issue not found" });
 
-    if (title !== undefined) issue.title = title;
-    if (description !== undefined) issue.description = description;
+    if (title !== undefined) issue.title = title.trim();
+    if (description !== undefined) issue.description = description.trim();
     if (status !== undefined) issue.status = status;
 
     await issue.save();
 
     const io = req.app.get("io");
     if (io) {
-      io.emit("activity", {
+      io.to("repo_" + issue.repository).emit("activity", {
         type: "issue_updated",
         title: issue.title,
         status: issue.status,
@@ -80,6 +84,7 @@ const updateIssueById = async (req, res) => {
   }
 };
 
+// ── Delete Issue ──────────────────────────────────────────────────────────────
 const deleteIssueById = async (req, res) => {
   const { id } = req.params;
 
@@ -91,10 +96,7 @@ const deleteIssueById = async (req, res) => {
     const issue = await Issue.findByIdAndDelete(id);
     if (!issue) return res.status(404).json({ error: "Issue not found" });
 
-    // Remove issue reference from repository
-    await Repository.findByIdAndUpdate(issue.repository, {
-      $pull: { issues: id },
-    });
+    await Repository.findByIdAndUpdate(issue.repository, { $pull: { issues: id } });
 
     res.json({ message: "Issue deleted successfully" });
   } catch (err) {
@@ -103,19 +105,43 @@ const deleteIssueById = async (req, res) => {
   }
 };
 
+// ── Get All Issues (paginated, filterable by repo) ────────────────────────────
 const getAllIssues = async (req, res) => {
   const repoId = req.params.id || req.query.repository;
+  const { status } = req.query;
+  const { page, limit, skip } = getPagination(req.query);
 
   try {
-    const query = repoId && mongoose.Types.ObjectId.isValid(repoId) ? { repository: repoId } : {};
-    const issues = await Issue.find(query).sort({ _id: -1 });
-    res.json(issues);
+    const query = {};
+    if (repoId && mongoose.Types.ObjectId.isValid(repoId)) query.repository = repoId;
+    if (status && ["open", "closed"].includes(status)) query.status = status;
+
+    const [issues, total] = await Promise.all([
+      Issue.find(query)
+        .sort({ _id: -1 })
+        .skip(skip)
+        .limit(limit),
+      Issue.countDocuments(query),
+    ]);
+
+    res.json({
+      issues,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+        hasPrevPage: page > 1,
+      },
+    });
   } catch (err) {
     console.error("Error during issue retrieval:", err.message);
     res.status(500).json({ error: "Server Error" });
   }
 };
 
+// ── Get Issue by ID ───────────────────────────────────────────────────────────
 const getIssueById = async (req, res) => {
   const { id } = req.params;
 

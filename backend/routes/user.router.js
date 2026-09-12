@@ -1,19 +1,25 @@
-const express = require("express");
+﻿const express = require("express");
 const userController = require("../controllers/userController");
 const authMiddleware = require("../middleware/authMiddleware");
+const validate = require("../middleware/validate");
+const { validateSignup, validateLogin, validateUpdateProfile } = require("../validators/userValidators");
 
 const userRouter = express.Router();
 
+// ── Public ────────────────────────────────────────────────────────────────────
 userRouter.get("/allUsers", userController.getAllUsers);
-userRouter.post("/signup", userController.signup);
-userRouter.post("/login", userController.login);
 userRouter.get("/userProfile/:id", userController.getUserProfile);
-userRouter.put("/updateProfile/:id", authMiddleware, userController.updateUserProfile);
+userRouter.get("/user/search", userController.searchUsers);
+userRouter.get("/user/contributions/:id", userController.getUserContributions);
+
+userRouter.post("/signup", validateSignup, validate, userController.signup);
+userRouter.post("/login", validateLogin, validate, userController.login);
+
+// ── Protected ─────────────────────────────────────────────────────────────────
+userRouter.put("/updateProfile/:id", authMiddleware, validateUpdateProfile, validate, userController.updateUserProfile);
 userRouter.delete("/deleteProfile/:id", authMiddleware, userController.deleteUserProfile);
 
-// Real-time Collaboration & Metrics routes
 userRouter.post("/user/star/:repoId", authMiddleware, userController.toggleStarRepo);
 userRouter.post("/user/follow/:targetId", authMiddleware, userController.toggleFollowUser);
-userRouter.get("/user/contributions/:id", userController.getUserContributions);
 
 module.exports = userRouter;

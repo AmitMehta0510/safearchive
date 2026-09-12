@@ -20,6 +20,7 @@ const { pullRepo } = require("./controllers/pull");
 const { revertRepo } = require("./controllers/revert");
 const { logRepo } = require("./controllers/log");
 const { statusRepo } = require("./controllers/status");
+const { remoteRepo } = require("./controllers/remote");
 
 dotenv.config();
 
@@ -33,42 +34,35 @@ yargs(hideBin(process.argv))
     "add <file>",
     "Add a file to the SafeArchive staging area",
     (yargs) => {
-      yargs.positional("file", {
-        describe: "Path of file to stage",
-        type: "string",
-      });
+      yargs.positional("file", { describe: "Path of file to stage", type: "string" });
     },
-    (argv) => {
-      addRepo(argv.file);
-    }
+    (argv) => { addRepo(argv.file); }
   )
   .command(
     "commit <message>",
     "Commit staged files to SafeArchive",
     (yargs) => {
-      yargs.positional("message", {
-        describe: "Commit message",
-        type: "string",
-      });
+      yargs.positional("message", { describe: "Commit message", type: "string" });
     },
-    (argv) => {
-      commitRepo(argv.message);
-    }
+    (argv) => { commitRepo(argv.message); }
   )
-  .command("push", "Push local commits to AWS S3 SafeArchive vault", {}, pushRepo)
+  .command("push", "Push local commits to AWS S3 and sync to web dashboard", {}, pushRepo)
   .command("pull", "Pull commits from AWS S3 SafeArchive vault", {}, pullRepo)
   .command(
     "revert <commitID>",
     "Revert working directory to a specific commit snapshot",
     (yargs) => {
-      yargs.positional("commitID", {
-        describe: "Commit UUID to revert to",
-        type: "string",
-      });
+      yargs.positional("commitID", { describe: "Commit UUID to revert to", type: "string" });
     },
-    (argv) => {
-      revertRepo(argv.commitID);
-    }
+    (argv) => { revertRepo(argv.commitID); }
+  )
+  .command(
+    "remote <repoId>",
+    "Link this local repo to a SafeArchive web platform repository by MongoDB ID",
+    (yargs) => {
+      yargs.positional("repoId", { describe: "MongoDB repository ID from the web platform", type: "string" });
+    },
+    (argv) => { remoteRepo(argv.repoId); }
   )
   .demandCommand(1, "Please provide a valid SafeArchive command (try --help)")
   .help().argv;
@@ -77,10 +71,10 @@ function startServer() {
   const app = express();
   const port = process.env.PORT || 3000;
 
-  // Security: HTTP security headers (XSS, clickjacking, MIME sniff, HSTS, CSP, etc.)
+  // Security: HTTP security headers
   app.use(helmet());
 
-  // Security: Global rate limiter -- 100 requests per 15 min per IP
+  // Security: Global rate limiter (100 req/15min/IP)
   const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -90,7 +84,7 @@ function startServer() {
   });
   app.use(globalLimiter);
 
-  // Security: Auth brute-force protection -- 10 attempts per 15 min per IP
+  // Security: Auth brute-force protection (10 attempts/15min)
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
@@ -101,26 +95,23 @@ function startServer() {
   app.use("/user/login", authLimiter);
   app.use("/user/signup", authLimiter);
 
-  // CORS: only allow known origins (set ALLOWED_ORIGINS in .env for production)
+  // CORS: strict allowlist
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
     : ["http://localhost:5173", "http://localhost:3000"];
 
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, Postman)
-        if (!origin || allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error("Not allowed by CORS"));
-        }
-      },
-      methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-      allowedHeaders: ["Content-Type", "Authorization", "x-auth-token"],
-      credentials: true,
-    })
-  );
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-auth-token"],
+    credentials: true,
+  }));
 
   // Body parsing
   app.use(bodyParser.json({ limit: "10mb" }));
@@ -156,7 +147,7 @@ function startServer() {
     });
   });
 
-  // Global error handler -- catches errors passed via next(err) from route handlers
+  // Global error handler
   app.use((err, req, res, next) => {
     console.error("[SafeArchive] Unhandled error:", err.message);
     res.status(500).json({ error: "Internal server error" });

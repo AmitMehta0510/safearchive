@@ -1,52 +1,41 @@
-const jwt = require("jsonwebtoken");
+﻿const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const Repository = require("../models/repoModel");
 const Issue = require("../models/issueModel");
-const dotenv = require("dotenv");
-
-dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET_KEY || "safearchive_jwt_secret";
 
+// ── Helper: parse pagination params ──────────────────────────────────────────
+function getPagination(query) {
+  const page = Math.max(1, parseInt(query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(query.limit) || 10));
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+}
+
+// ── Signup ────────────────────────────────────────────────────────────────────
 const signup = async (req, res) => {
-  const { username, password, email } = req.body;
+  const { username, email, password } = req.body;
 
   try {
-    if (!username || !password || !email) {
-      return res.status(400).json({ message: "Username, email, and password are required." });
-    }
-
-    const existingUser = await User.findOne({
-      $or: [{ username }, { email }],
-    });
-
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
-      return res.status(400).json({
-        message: existingUser.username === username ? "Username already exists" : "Email already exists",
-      });
+      const field = existingUser.email === email ? "email" : "username";
+      return res.status(400).json({ message: `An account with this ${field} already exists` });
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newUser = new User({
-      username,
-      password: hashedPassword,
-      email,
-      repositories: [],
-      followedUsers: [],
-      starRepos: [],
-    });
-
+    const newUser = new User({ username, email, password: hashedPassword });
     const savedUser = await newUser.save();
 
-    const token = jwt.sign({ id: savedUser._id }, JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign({ id: savedUser._id }, JWT_SECRET, { expiresIn: "7d" });
 
     res.status(201).json({
+      message: "User registered successfully!",
       token,
       userId: savedUser._id,
       username: savedUser.username,
@@ -54,18 +43,18 @@ const signup = async (req, res) => {
     });
   } catch (err) {
     console.error("Error during signup:", err.message);
-    res.status(500).json({ message: "Server error during registration" });
+    if (err.code === 11000) {
+      return res.status(400).json({ message: "Username or email already in use" });
+    }
+    res.status(500).json({ message: "Server error during signup" });
   }
 };
 
+// ── Login ─────────────────────────────────────────────────────────────────────
 const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required." });
-    }
-
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ message: "Invalid Credentials!" });
@@ -76,9 +65,7 @@ const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid Credentials!" });
     }
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "7d" });
 
     res.json({
       token,
@@ -92,18 +79,80 @@ const login = async (req, res) => {
   }
 };
 
+// ── Get All Users (paginated) ─────────────────────────────────────────────────
 const getAllUsers = async (req, res) => {
+  const { page, limit, skip } = getPagination(req.query);
+
   try {
-    const users = await User.find({}, "-password")
-      .populate("repositories")
-      .populate("followedUsers", "username");
-    res.json(users);
+    const [users, total] = await Promise.all([
+      User.find({}, "-password")
+        .populate("repositories")
+        .populate("followedUsers", "username")
+        .sort({ _id: -1 })
+        .skip(skip)
+        .limit(limit),
+      User.countDocuments({}),
+    ]);
+
+    res.json({
+      users,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+        hasPrevPage: page > 1,
+      },
+    });
   } catch (err) {
     console.error("Error fetching all users:", err.message);
     res.status(500).json({ message: "Server error fetching users" });
   }
 };
 
+// ── Search Users ──────────────────────────────────────────────────────────────
+const searchUsers = async (req, res) => {
+  const { q = "" } = req.query;
+  const { page, limit, skip } = getPagination(req.query);
+
+  if (!q.trim()) {
+    return res.status(400).json({ error: "Search query (q) is required" });
+  }
+
+  try {
+    const searchRegex = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const filter = {
+      $or: [{ username: searchRegex }, { email: searchRegex }],
+    };
+
+    const [users, total] = await Promise.all([
+      User.find(filter, "-password")
+        .select("username email repositories")
+        .skip(skip)
+        .limit(limit),
+      User.countDocuments(filter),
+    ]);
+
+    res.json({
+      query: q,
+      users,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+        hasPrevPage: page > 1,
+      },
+    });
+  } catch (err) {
+    console.error("Error searching users:", err.message);
+    res.status(500).json({ message: "Server error searching users" });
+  }
+};
+
+// ── Get User Profile ──────────────────────────────────────────────────────────
 const getUserProfile = async (req, res) => {
   const { id } = req.params;
 
@@ -114,10 +163,7 @@ const getUserProfile = async (req, res) => {
 
     const user = await User.findById(id, "-password")
       .populate("repositories")
-      .populate({
-        path: "starRepos",
-        populate: { path: "owner", select: "username" },
-      })
+      .populate({ path: "starRepos", populate: { path: "owner", select: "username" } })
       .populate("followedUsers", "username");
 
     if (!user) {
@@ -130,6 +176,7 @@ const getUserProfile = async (req, res) => {
   }
 };
 
+// ── Update Profile ────────────────────────────────────────────────────────────
 const updateUserProfile = async (req, res) => {
   const { id } = req.params;
   const { email, password } = req.body;
@@ -158,6 +205,7 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
+// ── Delete Profile ────────────────────────────────────────────────────────────
 const deleteUserProfile = async (req, res) => {
   const { id } = req.params;
 
@@ -173,7 +221,7 @@ const deleteUserProfile = async (req, res) => {
   }
 };
 
-// Toggle Star / Unstar repository
+// ── Toggle Star / Unstar ──────────────────────────────────────────────────────
 const toggleStarRepo = async (req, res) => {
   const userId = req.user;
   const { repoId } = req.params;
@@ -189,21 +237,16 @@ const toggleStarRepo = async (req, res) => {
       return res.status(404).json({ error: "User or Repository not found" });
     }
 
-    const isStarred = user.starRepos.some(
-      (rId) => rId.toString() === repoId.toString()
-    );
+    const isStarred = user.starRepos.some((rId) => rId.toString() === repoId.toString());
 
     if (isStarred) {
-      user.starRepos = user.starRepos.filter(
-        (rId) => rId.toString() !== repoId.toString()
-      );
+      user.starRepos = user.starRepos.filter((rId) => rId.toString() !== repoId.toString());
     } else {
       user.starRepos.push(repoId);
     }
 
     await user.save();
 
-    // Broadcast live activity event
     const io = req.app.get("io");
     if (io) {
       io.emit("activity", {
@@ -214,27 +257,21 @@ const toggleStarRepo = async (req, res) => {
       });
     }
 
-    // Return current star state and total count across users
     const starCount = await User.countDocuments({ starRepos: repoId });
-
-    res.json({
-      message: isStarred ? "Repository unstarred" : "Repository starred",
-      isStarred: !isStarred,
-      starCount,
-    });
+    res.json({ message: isStarred ? "Repository unstarred" : "Repository starred", isStarred: !isStarred, starCount });
   } catch (err) {
     console.error("Error toggling star:", err.message);
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// Toggle Follow / Unfollow User
+// ── Toggle Follow / Unfollow ──────────────────────────────────────────────────
 const toggleFollowUser = async (req, res) => {
   const currentUserId = req.user;
   const { targetId } = req.params;
 
   try {
-    if (currentUserId === targetId) {
+    if (currentUserId.toString() === targetId.toString()) {
       return res.status(400).json({ error: "You cannot follow yourself" });
     }
 
@@ -244,21 +281,16 @@ const toggleFollowUser = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const isFollowing = currentUser.followedUsers.some(
-      (fId) => fId.toString() === targetId.toString()
-    );
+    const isFollowing = currentUser.followedUsers.some((fId) => fId.toString() === targetId.toString());
 
     if (isFollowing) {
-      currentUser.followedUsers = currentUser.followedUsers.filter(
-        (fId) => fId.toString() !== targetId.toString()
-      );
+      currentUser.followedUsers = currentUser.followedUsers.filter((fId) => fId.toString() !== targetId.toString());
     } else {
       currentUser.followedUsers.push(targetId);
     }
 
     await currentUser.save();
 
-    // Broadcast live activity event
     const io = req.app.get("io");
     if (io) {
       io.emit("activity", {
@@ -269,9 +301,7 @@ const toggleFollowUser = async (req, res) => {
       });
     }
 
-    // Count followers of target user
     const followersCount = await User.countDocuments({ followedUsers: targetId });
-
     res.json({
       message: isFollowing ? "Unfollowed user" : "Followed user",
       isFollowing: !isFollowing,
@@ -284,7 +314,8 @@ const toggleFollowUser = async (req, res) => {
   }
 };
 
-// Calculate real 365-day contribution data
+// ── Real Contribution Heatmap ─────────────────────────────────────────────────
+// Activity weights: commit = 2pts, issue = 1pt, repo created = 3pts
 const getUserContributions = async (req, res) => {
   const { id } = req.params;
 
@@ -298,45 +329,73 @@ const getUserContributions = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const userRepos = await Repository.find({ owner: id });
-    const repoCount = userRepos.length;
-    const totalFiles = userRepos.reduce(
-      (acc, r) => acc + (r.content?.length || 0),
-      0
-    );
+    // Fetch all repos owned by user (with commits)
+    const userRepos = await Repository.find({ owner: id }).select("commits _id createdAt");
 
-    // Build timeline for the last 180-365 days
+    // Fetch all issues created by repos owned by user
+    const repoIds = userRepos.map((r) => r._id);
+    const userIssues = await Issue.find({ repository: { $in: repoIds } }).select("_id");
+
+    // Build activity map over 365 days
     const today = new Date();
     const startDate = new Date();
-    startDate.setDate(today.getDate() - 120); // 120 days rolling window for readable heatmap
+    startDate.setDate(today.getDate() - 364);
 
     const activityMap = {};
     let totalContributions = 0;
 
-    // Seed activity from real repositories and creation dates
+    const toDateKey = (d) => new Date(d).toISOString().split("T")[0];
+
+    // Count repo creations
     userRepos.forEach((repo) => {
-      const repoDate = repo._id.getTimestamp().toISOString().split("T")[0];
-      activityMap[repoDate] = (activityMap[repoDate] || 0) + 3;
-      totalContributions += 3;
+      const dateKey = toDateKey(repo._id.getTimestamp());
+      if (new Date(dateKey) >= startDate) {
+        activityMap[dateKey] = (activityMap[dateKey] || 0) + 3;
+        totalContributions += 3;
+      }
+
+      // Count commits per day
+      (repo.commits || []).forEach((commit) => {
+        const commitDate = toDateKey(commit.date);
+        if (new Date(commitDate) >= startDate) {
+          activityMap[commitDate] = (activityMap[commitDate] || 0) + 2;
+          totalContributions += 2;
+        }
+      });
     });
 
+    // Count issues
+    userIssues.forEach((issue) => {
+      const dateKey = toDateKey(issue._id.getTimestamp());
+      if (new Date(dateKey) >= startDate) {
+        activityMap[dateKey] = (activityMap[dateKey] || 0) + 1;
+        totalContributions += 1;
+      }
+    });
+
+    // Build continuous day array
     const data = [];
     const cur = new Date(startDate);
     while (cur <= today) {
-      const dateStr = cur.toISOString().split("T")[0];
-      const count = activityMap[dateStr] || 0;
-      data.push({
-        date: dateStr,
-        count: count,
-      });
+      const dateStr = toDateKey(cur);
+      data.push({ date: dateStr, count: activityMap[dateStr] || 0 });
       cur.setDate(cur.getDate() + 1);
+    }
+
+    // Calculate current streak
+    let currentStreak = 0;
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (data[i].count > 0) currentStreak++;
+      else break;
     }
 
     res.json({
       data,
       totalContributions,
-      repoCount,
-      totalFiles,
+      currentStreak,
+      repoCount: userRepos.length,
+      commitCount: userRepos.reduce((acc, r) => acc + (r.commits?.length || 0), 0),
+      issueCount: userIssues.length,
       startDate: startDate.toISOString().split("T")[0],
       endDate: today.toISOString().split("T")[0],
     });
@@ -350,6 +409,7 @@ module.exports = {
   signup,
   login,
   getAllUsers,
+  searchUsers,
   getUserProfile,
   updateUserProfile,
   deleteUserProfile,
