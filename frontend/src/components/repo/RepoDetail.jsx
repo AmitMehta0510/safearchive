@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "../../config/api";
 import Navbar from "../Navbar";
+import FileTree from "./FileTree";
+import CodeViewer from "./CodeViewer";
+import ReadmeViewer from "./ReadmeViewer";
+import CommitDiffViewer from "./CommitDiffViewer";
 import "./repoDetail.css";
 
 const RepoDetail = () => {
@@ -11,20 +15,31 @@ const RepoDetail = () => {
   const [repo, setRepo] = useState(null);
   const [issues, setIssues] = useState([]);
   const [commits, setCommits] = useState([]);
+  const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("code"); // "code" | "commits" | "issues" | "settings"
+
+  // Code Explorer & File Viewer State
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileData, setFileData] = useState(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [readmeContent, setReadmeContent] = useState("");
+
+  // Commit Diff Viewer State
+  const [selectedCommitDiff, setSelectedCommitDiff] = useState(null);
+
+  // File Creation / Edit Modal State
+  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileContent, setNewFileContent] = useState("");
+  const [newFileCommitMsg, setNewFileCommitMsg] = useState("");
 
   // Issue Form & Filtering State
   const [issueFilter, setIssueFilter] = useState("all");
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [newIssueTitle, setNewIssueTitle] = useState("");
   const [newIssueDesc, setNewIssueDesc] = useState("");
-
-  // Code / File State
-  const [newFileName, setNewFileName] = useState("");
-  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
 
   // Commit Creation State
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
@@ -41,7 +56,7 @@ const RepoDetail = () => {
 
   const currentUserId = localStorage.getItem("userId");
 
-  const fetchRepoData = async () => {
+  const fetchRepoData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get(`/repo/${id}`);
@@ -49,15 +64,19 @@ const RepoDetail = () => {
       setRepo(repoData);
       setNewDescription(repoData?.description || "");
 
-      // Fetch issues
       const issueRes = await api.get(`/issue/repo/${id}`);
       setIssues(issueRes.data?.issues || issueRes.data || []);
 
-      // Fetch commits
       const commitRes = await api.get(`/repo/${id}/commits`);
       setCommits(commitRes.data || []);
 
-      // Check star status if logged in
+      try {
+        const treeRes = await api.get(`/repo/${id}/tree`);
+        setTree(treeRes.data?.tree || []);
+      } catch (treeErr) {
+        console.warn("Tree fetch error:", treeErr);
+      }
+
       if (currentUserId) {
         try {
           const userRes = await api.get(`/userProfile/${currentUserId}`);
@@ -71,14 +90,78 @@ const RepoDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, currentUserId]);
 
   useEffect(() => {
     fetchRepoData();
-  }, [id]);
+  }, [fetchRepoData]);
 
-  // Handle New Issue Submission
-  const handleCreateIssue = async (e) => {
+  useEffect(() => {
+    if (!tree || tree.length === 0) return;
+    const hasReadme = tree.some((item) =>
+      item.path.toLowerCase().endsWith("readme.md")
+    );
+    if (hasReadme) {
+      const readmePath = tree.find((item) =>
+        item.path.toLowerCase().endsWith("readme.md")
+      ).path;
+
+      api
+        .get(`/repo/${id}/file?path=${encodeURIComponent(readmePath)}`)
+        .then((res) => {
+          if (res.data?.content) {
+            setReadmeContent(res.data.content);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [id, tree]);
+
+  const handleSelectFile = async (filePath) => {
+    try {
+      setFileLoading(true);
+      setSelectedFile(filePath);
+      const res = await api.get(`/repo/${id}/file?path=${encodeURIComponent(filePath)}`);
+      setFileData(res.data);
+    } catch (err) {
+      alert("Failed to load file content: " + (err.response?.data?.error || err.message));
+      setSelectedFile(null);
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  const handleCloseFile = () => {
+    setSelectedFile(null);
+    setFileData(null);
+  };
+
+  const handleDownloadZip = () => {
+    const apiBase = api.defaults.baseURL || "http://localhost:3000";
+    window.open(`${apiBase}/repo/${id}/archive/zip`, "_blank");
+  };
+
+  const handleAddFile = async (e) => {
+    e.preventDefault();
+    if (!newFileName.trim()) return;
+
+    try {
+      await api.post(`/repo/${id}/file`, {
+        path: newFileName.trim(),
+        content: newFileContent,
+        message: newFileCommitMsg.trim() || `Create ${newFileName.trim()}`,
+      });
+
+      setNewFileName("");
+      setNewFileContent("");
+      setNewFileCommitMsg("");
+      setIsFileModalOpen(false);
+      fetchRepoData();
+    } catch (err) {
+      alert("Failed to save file: " + (err.response?.data?.error || err.message));
+    }
+  };
+﻿  const handleCreateIssue = async (e) => {
     e.preventDefault();
     if (!newIssueTitle.trim()) return;
 
@@ -98,7 +181,6 @@ const RepoDetail = () => {
     }
   };
 
-  // Handle Issue Status Toggle
   const handleToggleIssueStatus = async (issueId, currentStatus) => {
     const nextStatus = currentStatus === "open" ? "closed" : "open";
     try {
@@ -106,18 +188,14 @@ const RepoDetail = () => {
         status: nextStatus,
       });
 
-      setIssues(
-        issues.map((iss) => (iss._id === issueId ? res.data : iss))
-      );
+      setIssues(issues.map((iss) => (iss._id === issueId ? res.data : iss)));
     } catch (err) {
       alert("Failed to update issue status.");
     }
   };
 
-  // Handle Issue Deletion
   const handleDeleteIssue = async (issueId) => {
     if (!window.confirm("Are you sure you want to delete this issue?")) return;
-
     try {
       await api.delete(`/issue/delete/${issueId}`);
       setIssues(issues.filter((iss) => iss._id !== issueId));
@@ -126,25 +204,6 @@ const RepoDetail = () => {
     }
   };
 
-  // Handle Adding File to Repo
-  const handleAddFile = async (e) => {
-    e.preventDefault();
-    if (!newFileName.trim()) return;
-
-    try {
-      const res = await api.put(`/repo/update/${id}`, {
-        content: newFileName.trim(),
-      });
-
-      setRepo(res.data.repository);
-      setNewFileName("");
-      setIsFileModalOpen(false);
-    } catch (err) {
-      alert("Failed to add file to repository.");
-    }
-  };
-
-  // Handle Commit Creation
   const handleCreateCommit = async (e) => {
     e.preventDefault();
     if (!newCommitMsg.trim()) return;
@@ -153,7 +212,6 @@ const RepoDetail = () => {
       ? newCommitFilesInput.split(",").map((f) => f.trim()).filter(Boolean)
       : (repo.content || []).slice(0, 3);
 
-    // Generate short random hex ID or UUID
     const randomHex = Math.random().toString(16).substring(2, 10);
 
     try {
@@ -173,7 +231,6 @@ const RepoDetail = () => {
     }
   };
 
-  // Handle Visibility Toggle
   const handleToggleVisibility = async () => {
     try {
       const res = await api.patch(`/repo/toggle/${id}`);
@@ -185,7 +242,6 @@ const RepoDetail = () => {
     }
   };
 
-  // Handle Description Update
   const handleUpdateDescription = async (e) => {
     e.preventDefault();
     try {
@@ -200,11 +256,8 @@ const RepoDetail = () => {
     }
   };
 
-  // Handle Repository Deletion
   const handleDeleteRepository = async () => {
-    const confirmName = window.prompt(
-      `To confirm deletion, type '${repo.name}':`
-    );
+    const confirmName = window.prompt(`To confirm deletion, type '${repo.name}':`);
     if (confirmName !== repo.name) {
       alert("Repository name did not match. Deletion cancelled.");
       return;
@@ -219,7 +272,6 @@ const RepoDetail = () => {
     }
   };
 
-  // Handle Star / Unstar
   const handleToggleStar = async () => {
     if (!currentUserId) {
       alert("Please log in to star this repository.");
@@ -285,7 +337,7 @@ const RepoDetail = () => {
               <span className="badge-visibility">{repo.visibility}</span>
             </div>
 
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <button
                 className="btn-secondary"
                 onClick={handleToggleStar}
@@ -303,7 +355,24 @@ const RepoDetail = () => {
 
               <button
                 className="btn-secondary"
-                onClick={() => setIsFileModalOpen(true)}
+                onClick={handleDownloadZip}
+                title="Download repository as ZIP"
+              >
+                <svg height="14" viewBox="0 0 16 16" width="14" fill="#8b949e" style={{ marginRight: "6px" }}>
+                  <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"></path>
+                  <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"></path>
+                </svg>
+                Download ZIP
+              </button>
+
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setNewFileName("");
+                  setNewFileContent("");
+                  setNewFileCommitMsg("");
+                  setIsFileModalOpen(true);
+                }}
               >
                 + Add File
               </button>
@@ -319,10 +388,13 @@ const RepoDetail = () => {
         <nav className="repo-nav-tabs">
           <button
             className={`repo-tab ${activeTab === "code" ? "active" : ""}`}
-            onClick={() => setActiveTab("code")}
+            onClick={() => {
+              setActiveTab("code");
+              setSelectedCommitDiff(null);
+            }}
           >
             Code
-            <span className="tab-counter">{(repo.content || []).length}</span>
+            <span className="tab-counter">{tree.length || (repo.content || []).length}</span>
           </button>
           <button
             className={`repo-tab ${activeTab === "commits" ? "active" : ""}`}
@@ -333,7 +405,10 @@ const RepoDetail = () => {
           </button>
           <button
             className={`repo-tab ${activeTab === "issues" ? "active" : ""}`}
-            onClick={() => setActiveTab("issues")}
+            onClick={() => {
+              setActiveTab("issues");
+              setSelectedCommitDiff(null);
+            }}
           >
             Issues
             <span className="tab-counter">{openCount}</span>
@@ -341,140 +416,166 @@ const RepoDetail = () => {
           {isOwner && (
             <button
               className={`repo-tab ${activeTab === "settings" ? "active" : ""}`}
-              onClick={() => setActiveTab("settings")}
+              onClick={() => {
+                setActiveTab("settings");
+                setSelectedCommitDiff(null);
+              }}
             >
               Settings
             </button>
           )}
         </nav>
-
-        {/* TAB 1: CODE & FILES */}
+﻿        {/* TAB 1: CODE & FILES */}
         {activeTab === "code" && (
           <main>
-            {/* Quick Setup with SafeArchive CLI */}
-            <section className="cli-banner">
-              <h4>Quick Setup & Remote Sync with SafeArchive CLI</h4>
-              <p style={{ fontSize: "0.85rem", color: "#8b949e", margin: "0 0 10px 0" }}>
-                Connect your local workspace to this cloud repository:
-              </p>
-              <div className="cli-code-block">
-                safearchive init<br />
-                safearchive add .<br />
-                safearchive commit "Initial commit"<br />
-                safearchive push
-              </div>
-            </section>
-
-            {/* File List Explorer */}
-            <section className="content-box">
-              <div className="content-box-header">
-                <span>Repository Files ({repo.content?.length || 0})</span>
-                <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>
-                  Revision: Latest
-                </span>
-              </div>
-
-              {!repo.content || repo.content.length === 0 ? (
-                <div style={{ padding: "30px", textAlign: "center", color: "#8b949e" }}>
-                  <p>No files committed yet in this repository.</p>
-                  <p style={{ fontSize: "0.85rem" }}>
-                    Stage and push files using the SafeArchive CLI or click <strong>+ Add File</strong> above.
-                  </p>
+            {selectedFile ? (
+              fileLoading ? (
+                <div style={{ textAlign: "center", padding: "60px", color: "#8b949e" }}>
+                  Loading {selectedFile}...
                 </div>
               ) : (
-                repo.content.map((file, idx) => (
-                  <div key={idx} className="file-row">
-                    <div
-                      className="file-name"
-                      onClick={() => setSelectedFile(file)}
-                    >
-                      <svg height="16" viewBox="0 0 16 16" width="16" fill="#8b949e">
-                        <path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l3.914 3.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0 1 14.25 16h-10.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 10 4.25V1.5Zm7.25.75v2.5c0 .138.112.25.25.25h2.5Z"></path>
-                      </svg>
-                      <span>{file}</span>
-                    </div>
-                    <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>
-                      SafeArchive Verified
-                    </span>
+                <CodeViewer
+                  fileData={fileData}
+                  onClose={handleCloseFile}
+                  onEdit={() => {
+                    setNewFileName(fileData.path);
+                    setNewFileContent(fileData.content);
+                    setNewFileCommitMsg(`Update ${fileData.path}`);
+                    setIsFileModalOpen(true);
+                  }}
+                />
+              )
+            ) : (
+              <>
+                {/* File Tree Explorer */}
+                <FileTree
+                  tree={tree}
+                  onSelectFile={handleSelectFile}
+                  onAddFile={() => {
+                    setNewFileName("");
+                    setNewFileContent("");
+                    setNewFileCommitMsg("");
+                    setIsFileModalOpen(true);
+                  }}
+                  onDownloadZip={handleDownloadZip}
+                  repoName={repo.name}
+                />
+
+                {/* README Markdown Section */}
+                {readmeContent && (
+                  <ReadmeViewer content={readmeContent} repoName={repo.name} />
+                )}
+
+                {/* Quick Setup with SafeArchive CLI */}
+                <section className="cli-banner" style={{ marginTop: "24px" }}>
+                  <h4>Quick Setup & Remote Sync with SafeArchive CLI</h4>
+                  <p style={{ fontSize: "0.85rem", color: "#8b949e", margin: "0 0 10px 0" }}>
+                    Connect your local workspace to this cloud repository:
+                  </p>
+                  <div className="cli-code-block">
+                    safearchive init<br />
+                    safearchive remote {repo._id}<br />
+                    safearchive add .<br />
+                    safearchive commit "Initial commit"<br />
+                    safearchive push
                   </div>
-                ))
-              )}
-            </section>
+                </section>
+              </>
+            )}
           </main>
         )}
 
         {/* TAB 2: COMMITS EXPLORER */}
         {activeTab === "commits" && (
           <main>
-            <div className="issues-toolbar">
-              <div>
-                <h4 style={{ margin: 0, color: "#f0f6fc" }}>
-                  Commit Revision Timeline ({commits.length})
-                </h4>
-                <p style={{ margin: "4px 0 0 0", color: "#8b949e", fontSize: "0.85rem" }}>
-                  Verified snapshots tracked in the SafeArchive cloud vault.
-                </p>
-              </div>
-
-              <button
-                className="btn-primary"
-                onClick={() => setIsCommitModalOpen(true)}
-              >
-                + Record Commit
-              </button>
-            </div>
-
-            <section className="content-box">
-              <div className="content-box-header">
-                <span>Revision History</span>
-                <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>Branch: main</span>
-              </div>
-
-              {commits.length === 0 ? (
-                <div style={{ padding: "40px", textAlign: "center", color: "#8b949e" }}>
-                  <p>No commits recorded yet for this repository.</p>
-                  <p style={{ fontSize: "0.85rem" }}>
-                    Run <code>safearchive commit "message"</code> in your local workspace or click <strong>+ Record Commit</strong>.
-                  </p>
-                </div>
-              ) : (
-                commits.map((c) => (
-                  <div key={c._id || c.commitID} className="commit-row">
-                    <div className="commit-main">
-                      <h4 className="commit-message">{c.message}</h4>
-                      <div className="commit-meta">
-                        <span>{repo.owner?.username || "author"} committed</span>
-                        <span>•</span>
-                        <span>{new Date(c.date).toLocaleString()}</span>
-                        {c.files && c.files.length > 0 && (
-                          <>
-                            <span>•</span>
-                            <div>
-                              {c.files.map((f, i) => (
-                                <span key={i} className="file-tag">{f}</span>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span
-                        className="commit-hash-pill"
-                        title="Click to copy full commit ID"
-                        onClick={() => {
-                          navigator.clipboard?.writeText(c.commitID);
-                          alert(`Copied commit ID: ${c.commitID}`);
-                        }}
-                      >
-                        {(c.commitID || "").slice(0, 8)} 📋
-                      </span>
-                    </div>
+            {selectedCommitDiff ? (
+              <CommitDiffViewer
+                repoId={id}
+                commitId={selectedCommitDiff}
+                onClose={() => setSelectedCommitDiff(null)}
+              />
+            ) : (
+              <>
+                <div className="issues-toolbar">
+                  <div>
+                    <h4 style={{ margin: 0, color: "#f0f6fc" }}>
+                      Commit Revision Timeline ({commits.length})
+                    </h4>
+                    <p style={{ margin: "4px 0 0 0", color: "#8b949e", fontSize: "0.85rem" }}>
+                      Click any commit to view visual file diffs and additions/deletions.
+                    </p>
                   </div>
-                ))
-              )}
-            </section>
+
+                  <button
+                    className="btn-primary"
+                    onClick={() => setIsCommitModalOpen(true)}
+                  >
+                    + Record Commit
+                  </button>
+                </div>
+
+                <section className="content-box">
+                  <div className="content-box-header">
+                    <span>Revision History</span>
+                    <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>Branch: main</span>
+                  </div>
+
+                  {commits.length === 0 ? (
+                    <div style={{ padding: "40px", textAlign: "center", color: "#8b949e" }}>
+                      <p>No commits recorded yet for this repository.</p>
+                      <p style={{ fontSize: "0.85rem" }}>
+                        Run <code>safearchive commit "message"</code> in your local workspace or click <strong>+ Record Commit</strong>.
+                      </p>
+                    </div>
+                  ) : (
+                    commits.map((c) => (
+                      <div
+                        key={c._id || c.commitID}
+                        className="commit-row"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedCommitDiff(c.commitID)}
+                        title="Click to view visual diff"
+                      >
+                        <div className="commit-main">
+                          <h4 className="commit-message" style={{ color: "#58a6ff" }}>
+                            {c.message}
+                          </h4>
+                          <div className="commit-meta">
+                            <span>{repo.owner?.username || "author"} committed</span>
+                            <span>·</span>
+                            <span>{new Date(c.date).toLocaleString()}</span>
+                            {c.files && c.files.length > 0 && (
+                              <>
+                                <span>·</span>
+                                <div style={{ display: "inline-flex", gap: "4px", flexWrap: "wrap" }}>
+                                  {c.files.map((f, i) => (
+                                    <span key={i} className="file-tag">{f}</span>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span
+                            className="commit-hash-pill"
+                            title="Click to view diff or copy"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard?.writeText(c.commitID);
+                              setSelectedCommitDiff(c.commitID);
+                            }}
+                          >
+                            {(c.commitID || "").slice(0, 8)} ↗
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </section>
+              </>
+            )}
           </main>
         )}
 
@@ -514,39 +615,42 @@ const RepoDetail = () => {
             <section className="content-box">
               <div className="content-box-header">
                 <span>Issues Tracker</span>
+                <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>
+                  {filteredIssues.length} issue(s) shown
+                </span>
               </div>
 
               {filteredIssues.length === 0 ? (
                 <div style={{ padding: "40px", textAlign: "center", color: "#8b949e" }}>
-                  <p>No {issueFilter !== "all" ? issueFilter : ""} issues found.</p>
+                  <p>No issues found for filter: "{issueFilter}".</p>
                 </div>
               ) : (
                 filteredIssues.map((iss) => (
-                  <div key={iss._id} className="issue-item">
-                    <div className="issue-info">
-                      <span
-                        className={`status-indicator status-${iss.status}`}
-                      >
-                        {iss.status}
-                      </span>
-                      <div>
-                        <h4 className="issue-title">{iss.title}</h4>
-                        <p className="issue-desc">
-                          {iss.description || "No description provided."}
-                        </p>
+                  <div key={iss._id} className="issue-row">
+                    <div className="issue-main">
+                      <div className="issue-title-line">
+                        <span className={`status-badge ${iss.status}`}>
+                          {iss.status === "open" ? "● Open" : "✓ Closed"}
+                        </span>
+                        <h4>{iss.title}</h4>
                       </div>
+                      {iss.description && (
+                        <p className="issue-desc">{iss.description}</p>
+                      )}
+                      <span className="issue-date">
+                        Opened {new Date(iss.createdAt).toLocaleDateString()}
+                      </span>
                     </div>
 
-                    <div style={{ display: "flex", gap: "8px" }}>
+                    <div className="issue-actions">
                       <button
-                        className="btn-secondary"
+                        className="btn-secondary btn-sm"
                         onClick={() => handleToggleIssueStatus(iss._id, iss.status)}
                       >
                         {iss.status === "open" ? "Close" : "Reopen"}
                       </button>
                       <button
-                        className="btn-secondary"
-                        style={{ color: "#f85149" }}
+                        className="btn-danger btn-sm"
                         onClick={() => handleDeleteIssue(iss._id)}
                       >
                         Delete
@@ -561,85 +665,158 @@ const RepoDetail = () => {
 
         {/* TAB 4: SETTINGS */}
         {activeTab === "settings" && isOwner && (
-          <main>
+          <main className="settings-panel">
             {settingsMessage && (
-              <div
-                style={{
-                  backgroundColor: "rgba(46, 160, 67, 0.15)",
-                  border: "1px solid #2ea043",
-                  color: "#3fb950",
-                  padding: "10px 14px",
-                  borderRadius: "6px",
-                  marginBottom: "16px",
-                }}
-              >
-                {settingsMessage}
-              </div>
+              <div className="settings-toast">{settingsMessage}</div>
             )}
 
-            {/* General Settings */}
-            <section className="settings-section">
-              <h3 style={{ color: "#f0f6fc", marginTop: 0 }}>General Settings</h3>
+            <div className="settings-card">
+              <h4>Repository Visibility</h4>
+              <p style={{ color: "#8b949e", fontSize: "0.9rem" }}>
+                Current status: <strong style={{ color: "#f0f6fc" }}>{repo.visibility}</strong>.
+                {repo.visibility === "public"
+                  ? " Anyone on the internet can see this vault."
+                  : " Only you can access this vault."}
+              </p>
+              <button
+                className="btn-secondary"
+                onClick={handleToggleVisibility}
+              >
+                Switch to {repo.visibility === "public" ? "Private" : "Public"}
+              </button>
+            </div>
 
-              <form onSubmit={handleUpdateDescription} style={{ marginBottom: "20px" }}>
-                <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-                  Repository Description
-                </label>
-                <div style={{ display: "flex", gap: "10px" }}>
+            <div className="settings-card">
+              <h4>Repository Description</h4>
+              <form onSubmit={handleUpdateDescription}>
+                <textarea
+                  rows={3}
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Describe your project..."
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    borderRadius: "6px",
+                    border: "1px solid #30363d",
+                    backgroundColor: "#0d1117",
+                    color: "#c9d1d9",
+                    boxSizing: "border-box",
+                    marginBottom: "12px",
+                  }}
+                />
+                <button type="submit" className="btn-primary">
+                  Save Description
+                </button>
+              </form>
+            </div>
+
+            <div className="settings-card danger-zone">
+              <h4 style={{ color: "#f85149" }}>Danger Zone</h4>
+              <p style={{ color: "#8b949e", fontSize: "0.9rem" }}>
+                Once you delete a repository, there is no going back. All tracked snapshots and issues will be permanently removed.
+              </p>
+              <button className="btn-danger" onClick={handleDeleteRepository}>
+                Delete this repository
+              </button>
+            </div>
+          </main>
+        )}
+
+        {/* MODAL: ADD / EDIT FILE */}
+        {isFileModalOpen && (
+          <div className="modal-overlay" onClick={() => setIsFileModalOpen(false)}>
+            <div className="modal-content" style={{ maxWidth: "680px" }} onClick={(e) => e.stopPropagation()}>
+              <h3>Add or Edit File</h3>
+              <form onSubmit={handleAddFile}>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                    File Name / Path *
+                  </label>
                   <input
                     type="text"
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
+                    value={newFileName}
+                    onChange={(e) => setNewFileName(e.target.value)}
+                    placeholder="e.g. README.md, src/index.js, config.json"
+                    required
                     style={{
-                      flex: 1,
+                      width: "100%",
                       padding: "8px 12px",
                       borderRadius: "6px",
                       border: "1px solid #30363d",
                       backgroundColor: "#0d1117",
                       color: "#c9d1d9",
+                      boxSizing: "border-box",
                     }}
                   />
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                    File Content
+                  </label>
+                  <textarea
+                    rows={8}
+                    value={newFileContent}
+                    onChange={(e) => setNewFileContent(e.target.value)}
+                    placeholder="Type or paste your code or markdown here..."
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #30363d",
+                      backgroundColor: "#0d1117",
+                      color: "#79c0ff",
+                      boxSizing: "border-box",
+                      fontFamily: "monospace",
+                      fontSize: "0.88rem",
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                    Commit Message
+                  </label>
+                  <input
+                    type="text"
+                    value={newFileCommitMsg}
+                    onChange={(e) => setNewFileCommitMsg(e.target.value)}
+                    placeholder="e.g. Create README.md or feat: add entrypoint"
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "1px solid #30363d",
+                      backgroundColor: "#0d1117",
+                      color: "#c9d1d9",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setIsFileModalOpen(false)}
+                  >
+                    Cancel
+                  </button>
                   <button type="submit" className="btn-primary">
-                    Save Description
+                    Commit File
                   </button>
                 </div>
               </form>
-
-              <hr style={{ borderColor: "#30363d", margin: "24px 0" }} />
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <h4 style={{ margin: "0 0 4px 0", color: "#f0f6fc" }}>
-                    Change Repository Visibility
-                  </h4>
-                  <p style={{ margin: 0, color: "#8b949e", fontSize: "0.85rem" }}>
-                    This repository is currently <strong>{repo.visibility}</strong>.
-                  </p>
-                </div>
-                <button className="btn-secondary" onClick={handleToggleVisibility}>
-                  Make {repo.visibility === "public" ? "Private" : "Public"}
-                </button>
-              </div>
-            </section>
-
-            {/* Danger Zone */}
-            <section className="settings-section danger-zone">
-              <h4>Danger Zone</h4>
-              <p style={{ color: "#8b949e", fontSize: "0.85rem", marginBottom: "16px" }}>
-                Once you delete a repository, all files, issues, and metadata are permanently removed.
-              </p>
-              <button className="btn-danger" onClick={handleDeleteRepository}>
-                Delete this repository
-              </button>
-            </section>
-          </main>
+            </div>
+          </div>
         )}
 
         {/* MODAL: RECORD COMMIT */}
         {isCommitModalOpen && (
           <div className="modal-overlay" onClick={() => setIsCommitModalOpen(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Record SafeArchive Commit</h3>
+              <h3>Record Commit Snapshot</h3>
               <form onSubmit={handleCreateCommit}>
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
@@ -764,86 +941,6 @@ const RepoDetail = () => {
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: ADD FILE */}
-        {isFileModalOpen && (
-          <div className="modal-overlay" onClick={() => setIsFileModalOpen(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h3>Add File to Repository</h3>
-              <form onSubmit={handleAddFile}>
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
-                    File Name / Path *
-                  </label>
-                  <input
-                    type="text"
-                    value={newFileName}
-                    onChange={(e) => setNewFileName(e.target.value)}
-                    placeholder="e.g. index.js, README.md, src/app.py"
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      borderRadius: "6px",
-                      border: "1px solid #30363d",
-                      backgroundColor: "#0d1117",
-                      color: "#c9d1d9",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setIsFileModalOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-primary">
-                    Add File
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL: FILE PREVIEW */}
-        {selectedFile && (
-          <div className="modal-overlay" onClick={() => setSelectedFile(null)}>
-            <div className="modal-content" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
-              <h3>File: {selectedFile}</h3>
-              <div
-                style={{
-                  backgroundColor: "#0d1117",
-                  border: "1px solid #30363d",
-                  padding: "16px",
-                  borderRadius: "6px",
-                  fontFamily: "monospace",
-                  fontSize: "0.9rem",
-                  color: "#79c0ff",
-                  maxHeight: "300px",
-                  overflowY: "auto",
-                }}
-              >
-                // SafeArchive File Snapshot<br />
-                // Path: {selectedFile}<br />
-                // Status: Tracked in SafeArchive Vault
-              </div>
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setSelectedFile(null)}
-                >
-                  Close
-                </button>
-              </div>
             </div>
           </div>
         )}

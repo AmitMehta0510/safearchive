@@ -15,6 +15,13 @@ repoRouter.get("/repo/user/:userID", repoController.fetchRepositoriesForCurrentU
 repoRouter.get("/repo/:id", repoController.getRepositoryById);
 repoRouter.get("/repo/:id/commits", repoController.getRepoCommits);
 
+// --- Phase 1: In-Browser Code, Tree, Diff & Archive ---
+repoRouter.get("/repo/:id/tree", repoController.getRepoTree);
+repoRouter.get("/repo/:id/file", repoController.getFileContent);
+repoRouter.get("/repo/:id/commits/:commitId/diff", repoController.getCommitDiff);
+repoRouter.get("/repo/:id/archive/zip", repoController.downloadRepoZip);
+repoRouter.post("/repo/:id/file", authMiddleware, repoController.createOrUpdateFile);
+
 // ── Protected: login required ─────────────────────────────────────────────────
 repoRouter.post("/repo/create", authMiddleware, validateCreateRepo, validate, repoController.createRepository);
 repoRouter.post("/repo/:id/commit", authMiddleware, validateRecordCommit, validate, repoController.recordCommit);

@@ -18,6 +18,15 @@ const RepositorySchema = new Schema(
         type: String,
       },
     ],
+    files: [
+      {
+        path: { type: String, required: true },
+        content: { type: String, default: "" },
+        size: { type: Number, default: 0 },
+        lastModified: { type: Date, default: Date.now },
+        lastCommitMessage: { type: String, default: "Add file" },
+      },
+    ],
     visibility: {
       type: String,
       enum: ["public", "private"],
