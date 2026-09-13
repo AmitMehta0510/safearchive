@@ -10,6 +10,7 @@ const PullRequestDetail = ({ prId, repoId, onBack, onUpdated }) => {
   const [newComment, setNewComment] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [statusCheck, setStatusCheck] = useState(null);
   const [togglingStatus, setTogglingStatus] = useState(false);
   const [error, setError] = useState("");
 
@@ -256,6 +257,36 @@ const PullRequestDetail = ({ prId, repoId, onBack, onUpdated }) => {
               </div>
             );
           })}
+
+          {/* AUTOMATED STATUS CHECKS BANNER */}
+          {statusCheck && statusCheck.status !== "none" && (
+            <div className={"pr-checks-box " + (statusCheck.status === "in_progress" || statusCheck.status === "queued" ? "pending" : statusCheck.conclusion === "success" ? "success" : "failure")}>
+              <div className={"checks-icon-circle " + (statusCheck.status === "in_progress" || statusCheck.status === "queued" ? "amber" : statusCheck.conclusion === "success" ? "green" : "red")}>
+                {statusCheck.status === "in_progress" || statusCheck.status === "queued" ? "⏳" : statusCheck.conclusion === "success" ? "✓" : "✕"}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong style={{ color: "#f0f6fc", fontSize: "0.95rem" }}>
+                    {statusCheck.status === "in_progress" || statusCheck.status === "queued"
+                      ? "Some checks haven't completed yet"
+                      : statusCheck.conclusion === "success"
+                      ? "All checks have passed"
+                      : "Some checks were not successful"}
+                  </strong>
+                  <span style={{ fontSize: "0.8rem", color: "#8b949e" }}>
+                    {statusCheck.durationMs ? (statusCheck.durationMs / 1000).toFixed(1) + "s" : ""}
+                  </span>
+                </div>
+                <p style={{ margin: "3px 0 0 0", fontSize: "0.85rem", color: "#8b949e" }}>
+                  {statusCheck.conclusion === "success"
+                    ? "1 successful check — " + (statusCheck.name || "CI Build & Test Suite") + " on " + statusCheck.branch
+                    : statusCheck.status === "in_progress" || statusCheck.status === "queued"
+                    ? "1 check in progress — " + (statusCheck.name || "CI Build & Test Suite") + " is running..."
+                    : "1 failing check — " + (statusCheck.name || "CI Build & Test Suite") + " encountered errors"}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* MERGE / STATUS CARD */}
           <div className={`pr-merge-box status-${status}`}>

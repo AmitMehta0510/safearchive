@@ -39,6 +39,30 @@ const RepoDetail = () => {
   const [prCounts, setPrCounts] = useState({ openCount: 0, closedCount: 0, mergedCount: 0, totalCount: 0 });
   const [prFilter, setPrFilter] = useState("open");
   const [selectedPR, setSelectedPR] = useState(null);
+
+  // Phase 5: Actions (CI/CD) State
+  const [actionsRuns, setActionsRuns] = useState([]);
+  const [selectedRun, setSelectedRun] = useState(null);
+  const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
+  const [dispatchBranch, setDispatchBranch] = useState("main");
+  const [actionsLoading, setActionsLoading] = useState(false);
+
+  // Phase 5: Releases State
+  const [releases, setReleases] = useState([]);
+  const [isNewReleaseModalOpen, setIsNewReleaseModalOpen] = useState(false);
+  const [newReleaseTag, setNewReleaseTag] = useState("");
+  const [newReleaseTitle, setNewReleaseTitle] = useState("");
+  const [newReleaseBody, setNewReleaseBody] = useState("");
+  const [newReleaseBranch, setNewReleaseBranch] = useState("main");
+  const [newReleasePrerelease, setNewReleasePrerelease] = useState(false);
+
+  // Phase 5: Webhooks State
+  const [webhooks, setWebhooks] = useState([]);
+  const [isAddWebhookModalOpen, setIsAddWebhookModalOpen] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [webhookEvents, setWebhookEvents] = useState(["push", "issue_created", "pr_merged"]);
+  const [selectedDeliveries, setSelectedDeliveries] = useState(null);
   const [isNewPRModalOpen, setIsNewPRModalOpen] = useState(false);
 
   // Code Explorer & File Viewer State
@@ -366,6 +390,128 @@ const RepoDetail = () => {
   };
 
 
+  // Phase 5 Handlers
+  const fetchActionsRuns = async () => {
+    try {
+      setActionsLoading(true);
+      const res = await api.get("/repo/" + repoId + "/actions/runs");
+      setActionsRuns(res.data.runs || []);
+    } catch (err) {
+      console.error("Error fetching actions runs:", err);
+    } finally {
+      setActionsLoading(false);
+    }
+  };
+
+  const handleDispatchWorkflow = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post("/repo/" + repoId + "/actions/dispatch", { branch: dispatchBranch });
+      setIsDispatchModalOpen(false);
+      fetchActionsRuns();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to dispatch workflow");
+    }
+  };
+
+  const handleRerunWorkflow = async (runId) => {
+    try {
+      await api.post("/repo/" + repoId + "/actions/runs/" + runId + "/rerun");
+      fetchActionsRuns();
+      if (selectedRun && selectedRun._id === runId) {
+        const updated = await api.get("/repo/" + repoId + "/actions/runs/" + runId);
+        setSelectedRun(updated.data);
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to rerun workflow");
+    }
+  };
+
+  const fetchReleases = async () => {
+    try {
+      const res = await api.get("/repo/" + repoId + "/releases");
+      setReleases(res.data || []);
+    } catch (err) {
+      console.error("Error fetching releases:", err);
+    }
+  };
+
+  const handleCreateRelease = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post("/repo/" + repoId + "/releases", {
+        tagName: newReleaseTag.trim(),
+        name: newReleaseTitle.trim(),
+        body: newReleaseBody,
+        targetBranch: newReleaseBranch,
+        isPrerelease: newReleasePrerelease,
+      });
+      setIsNewReleaseModalOpen(false);
+      setNewReleaseTag("");
+      setNewReleaseTitle("");
+      setNewReleaseBody("");
+      fetchReleases();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to create release");
+    }
+  };
+
+  const handleDeleteRelease = async (releaseId) => {
+    if (!window.confirm("Are you sure you want to delete this release?")) return;
+    try {
+      await api.delete("/repo/" + repoId + "/releases/" + releaseId);
+      fetchReleases();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to delete release");
+    }
+  };
+
+  const fetchWebhooks = async () => {
+    try {
+      const res = await api.get("/repo/" + repoId + "/webhooks");
+      setWebhooks(res.data || []);
+    } catch (err) {
+      console.error("Error fetching webhooks:", err);
+    }
+  };
+
+  const handleCreateWebhook = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post("/repo/" + repoId + "/webhooks", {
+        url: webhookUrl.trim(),
+        secret: webhookSecret.trim(),
+        events: webhookEvents,
+      });
+      setIsAddWebhookModalOpen(false);
+      setWebhookUrl("");
+      setWebhookSecret("");
+      fetchWebhooks();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to create webhook");
+    }
+  };
+
+  const handleDeleteWebhook = async (webhookId) => {
+    if (!window.confirm("Are you sure you want to delete this webhook?")) return;
+    try {
+      await api.delete("/repo/" + repoId + "/webhooks/" + webhookId);
+      fetchWebhooks();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to delete webhook");
+    }
+  };
+
+  const handleTestWebhook = async (webhookId) => {
+    try {
+      const res = await api.post("/repo/" + repoId + "/webhooks/" + webhookId + "/test");
+      alert("Ping event dispatched! Status Code: " + res.data.delivery?.statusCode);
+      fetchWebhooks();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to test webhook");
+    }
+  };
+
   const handleAddCollaborator = async (e) => {
     e.preventDefault();
     if (!newCollabUsername.trim()) return;
@@ -575,6 +721,29 @@ const RepoDetail = () => {
           >
             Issues
             <span className="tab-counter">{openCount}</span>
+          </button>
+          <button
+            className={`repo-tab ${activeTab === "actions" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("actions");
+              setSelectedCommitDiff(null);
+              setSelectedRun(null);
+              fetchActionsRuns();
+            }}
+          >
+            Actions
+            <span className="tab-counter">{actionsRuns.length}</span>
+          </button>
+          <button
+            className={`repo-tab ${activeTab === "releases" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("releases");
+              setSelectedCommitDiff(null);
+              fetchReleases();
+            }}
+          >
+            Releases
+            <span className="tab-counter">{releases.length}</span>
           </button>
           {isOwner && (
             <button
@@ -976,6 +1145,82 @@ safearchive push`}
                   })
                 )}
               </div>
+            </section>
+
+            {/* WEBHOOKS MANAGEMENT SECTION */}
+            <section className="settings-section">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                <div>
+                  <h3 style={{ margin: "0 0 4px 0" }}>Webhooks</h3>
+                  <p style={{ fontSize: "0.85rem", color: "#8b949e", margin: 0 }}>
+                    Deliver HTTP POST payloads to external URLs on push, issue, and PR events with HMAC signatures.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => setIsAddWebhookModalOpen(true)}
+                >
+                  Add webhook
+                </button>
+              </div>
+
+              {webhooks.length === 0 ? (
+                <p style={{ color: "#8b949e", fontSize: "0.85rem" }}>No webhooks configured for this repository.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {webhooks.map((wh) => (
+                    <div
+                      key={wh._id}
+                      style={{
+                        backgroundColor: "#0d1117",
+                        border: "1px solid #30363d",
+                        borderRadius: "6px",
+                        padding: "12px 16px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                          <span style={{ color: "#3fb950", fontSize: "0.85rem" }}>●</span>
+                          <strong style={{ color: "#58a6ff", fontFamily: "monospace" }}>{wh.url}</strong>
+                        </div>
+                        <span style={{ fontSize: "0.8rem", color: "#8b949e" }}>
+                          Events: {(wh.events || []).join(", ")} • {wh.deliveries?.length || 0} deliveries logged
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ fontSize: "0.8rem" }}
+                          onClick={() => handleTestWebhook(wh._id)}
+                        >
+                          Send ping
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ fontSize: "0.8rem" }}
+                          onClick={() => setSelectedDeliveries(wh.deliveries || [])}
+                        >
+                          Deliveries
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ color: "#f85149", borderColor: "#da3633", fontSize: "0.8rem" }}
+                          onClick={() => handleDeleteWebhook(wh._id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="settings-section danger-zone">

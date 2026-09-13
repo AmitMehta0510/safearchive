@@ -1,3 +1,5 @@
+const { triggerWebhooks } = require("../utils/webhookHelper");
+const { triggerWorkflowForCommit } = require("../utils/workflowRunner");
 const { sendNotification } = require('../utils/notifyHelper');
 const { ZipArchive } = require("archiver");
 const { s3, S3_BUCKET } = require("../config/aws-config");
@@ -233,6 +235,8 @@ const updateRepositoryById = async (req, res) => {
     if (description !== undefined) repository.description = description;
 
     const updatedRepository = await repository.save();
+
+
     res.json({ message: "Repository updated successfully", repository: updatedRepository });
   } catch (err) {
     console.error("Error during repository update:", err.message);
@@ -364,6 +368,30 @@ const recordCommit = async (req, res) => {
         timestamp: new Date().toISOString(),
       });
     }
+
+    // Trigger SafeArchive Actions & Webhooks
+    const targetBranch = (req.body && req.body.branch) || "main";
+    triggerWebhooks(id, "push", {
+      commit: {
+        id: commitID,
+        message,
+        branch: targetBranch,
+        files,
+        timestamp: new Date().toISOString(),
+      },
+      repository: { id, name: repository.name },
+      sender: { id: req.user },
+    }).catch((err) => console.error("Webhook error:", err.message));
+
+    triggerWorkflowForCommit({
+      repoId: id,
+      commitID,
+      commitMessage: message,
+      branch: targetBranch,
+      event: "push",
+      user: req.user,
+      io,
+    }).catch((err) => console.error("Workflow error:", err.message));
 
     res.status(201).json({ message: "Commit recorded successfully", commit: newCommit });
   } catch (err) {

@@ -1,3 +1,4 @@
+const { triggerWebhooks } = require("../utils/webhookHelper");
 ﻿const mongoose = require("mongoose");
 const Repository = require("../models/repoModel");
 const Issue = require("../models/issueModel");
@@ -37,6 +38,18 @@ const createIssue = async (req, res) => {
     });
 
     const savedIssue = await issue.save();
+
+    triggerWebhooks(repoId, "issue_created", {
+      action: "opened",
+      issue: {
+        id: savedIssue._id,
+        title: savedIssue.title,
+        description: savedIssue.description,
+        status: savedIssue.status,
+      },
+      repository: { id: repoId, name: repo.name },
+      sender: { id: userId },
+    }).catch((err) => console.error("Webhook error:", err.message));
 
     await Repository.findByIdAndUpdate(repoId, { $push: { issues: savedIssue._id } });
 

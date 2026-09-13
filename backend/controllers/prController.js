@@ -1,3 +1,5 @@
+const { triggerWebhooks } = require("../utils/webhookHelper");
+const { triggerWorkflowForCommit } = require("../utils/workflowRunner");
 ﻿const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 const PullRequest = require("../models/pullRequestModel");
@@ -77,6 +79,30 @@ const createPullRequest = async (req, res) => {
     });
 
     await pullRequest.save();
+
+    triggerWebhooks(id, "pr_merged", {
+      action: "merged",
+      pull_request: {
+        id: pullRequest._id,
+        number: pullRequest.prNumber,
+        title: pullRequest.title,
+        sourceBranch: pullRequest.sourceBranch,
+        targetBranch: pullRequest.targetBranch,
+        mergedAt: pullRequest.mergedAt,
+      },
+      repository: { id, name: repo.name },
+      sender: { id: userId },
+    }).catch((err) => console.error("Webhook error:", err.message));
+
+    triggerWorkflowForCommit({
+      repoId: id,
+      commitID: "merge-pr-" + pullRequest.prNumber,
+      commitMessage: "Merge pull request #" + pullRequest.prNumber + " from " + pullRequest.sourceBranch,
+      branch: pullRequest.targetBranch,
+      event: "pull_request",
+      user: userId,
+      io: req.app?.get("io"),
+    }).catch((err) => console.error("Workflow error:", err.message));
 
     // Link to repo
     if (!repo.pullRequests) repo.pullRequests = [];
