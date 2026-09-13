@@ -191,6 +191,8 @@ module.exports = {
   logout,
   createTokenCLI,
   getStoredCredentials,
+  saveStoredCredentials,
+  clearStoredCredentials,
   getStoredToken,
   fetchApi,
   getCredentialsPath,

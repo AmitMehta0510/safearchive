@@ -5,7 +5,7 @@ const fs = require("fs").promises;
 const path = require("path");
 const os = require("os");
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
+require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 
 const mainRouter = require("../routes/main.router");
 const User = require("../models/userModel");
