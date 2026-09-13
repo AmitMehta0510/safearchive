@@ -1,11 +1,13 @@
-const fs = require("fs").promises;
+﻿const fs = require("fs").promises;
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
+const { getCurrentBranch } = require("./branch");
 
 async function commitRepo(message) {
   const repoPath = path.resolve(process.cwd(), ".safearchive");
   const stagedPath = path.join(repoPath, "staging");
   const commitPath = path.join(repoPath, "commits");
+  const refsHeadsPath = path.join(repoPath, "refs", "heads");
 
   try {
     try {
@@ -24,6 +26,9 @@ async function commitRepo(message) {
     const commitID = uuidv4();
     const commitDir = path.join(commitPath, commitID);
     await fs.mkdir(commitDir, { recursive: true });
+    await fs.mkdir(refsHeadsPath, { recursive: true });
+
+    const currentBranch = await getCurrentBranch(repoPath);
 
     // Copy staged files to the commit directory
     for (const file of files) {
@@ -41,6 +46,7 @@ async function commitRepo(message) {
           commitID,
           message,
           files,
+          branch: currentBranch,
           date: new Date().toISOString(),
         },
         null,
@@ -48,13 +54,16 @@ async function commitRepo(message) {
       )
     );
 
+    // Update branch ref
+    await fs.writeFile(path.join(refsHeadsPath, currentBranch), commitID + "\n", "utf8");
+
     // Clean up staging area after committing
     for (const file of files) {
       await fs.unlink(path.join(stagedPath, file));
     }
 
-    console.log(`[SafeArchive] Commit ${commitID.slice(0, 8)} created successfully!`);
-    console.log(`Message: "${message}" (${files.length} file(s) committed)`);
+    console.log(`[${currentBranch} ${commitID.slice(0, 8)}] ${message}`);
+    console.log(` ${files.length} file(s) changed, staged files committed`);
   } catch (err) {
     console.error("Error committing files:", err);
   }

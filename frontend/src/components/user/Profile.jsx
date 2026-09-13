@@ -4,7 +4,7 @@ import api from "../../config/api";
 import "./profile.css";
 import Navbar from "../Navbar";
 import { UnderlineNav } from "@primer/react";
-import { BookIcon, RepoIcon, StarIcon } from "@primer/octicons-react";
+import { BookIcon, RepoIcon, StarIcon, KeyIcon } from "@primer/octicons-react";
 import HeatMapProfile from "./HeatMap";
 import { useAuth } from "../../authContext";
 
@@ -18,7 +18,54 @@ const Profile = () => {
   const [editLocation, setEditLocation] = useState("");
   const [editWebsite, setEditWebsite] = useState("");
   const [isCustomizePinsOpen, setIsCustomizePinsOpen] = useState(false);
-  const [savingProfile, setSavingProfile] = useState(false); // "overview" | "starred"
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [tokens, setTokens] = useState([]);
+  const [isCreateTokenOpen, setIsCreateTokenOpen] = useState(false);
+  const [newTokenName, setNewTokenName] = useState("");
+  const [newTokenDays, setNewTokenDays] = useState(30);
+  const [createdTokenValue, setCreatedTokenValue] = useState(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [tokenLoading, setTokenLoading] = useState(false);
+
+  const fetchTokens = async () => {
+    try {
+      setTokenLoading(true);
+      const res = await api.get("/user/tokens");
+      setTokens(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch tokens:", err);
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
+  const handleCreateToken = async (e) => {
+    e.preventDefault();
+    if (!newTokenName.trim()) return;
+    try {
+      const res = await api.post("/user/tokens", {
+        name: newTokenName.trim(),
+        expiresInDays: parseInt(newTokenDays),
+        scopes: ["repo", "read", "write"],
+      });
+      setCreatedTokenValue(res.data.token);
+      setIsCreateTokenOpen(false);
+      setNewTokenName("");
+      fetchTokens();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to create token");
+    }
+  };
+
+  const handleRevokeToken = async (id) => {
+    if (!window.confirm("Are you sure you want to revoke this Personal Access Token? Any CLI or script using this token will lose access immediately.")) return;
+    try {
+      await api.delete("/user/tokens/" + id);
+      fetchTokens();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to revoke token");
+    }
+  };
   const [loading, setLoading] = useState(true);
   const { setCurrentUser } = useAuth();
 
@@ -130,6 +177,23 @@ const Profile = () => {
           }}
         >
           Starred Repositories ({starredList.length})
+        </UnderlineNav.Item>
+
+        <UnderlineNav.Item
+          aria-current={activeTab === "tokens" ? "page" : undefined}
+          icon={KeyIcon}
+          onClick={() => {
+            setActiveTab("tokens");
+            fetchTokens();
+          }}
+          sx={{
+            cursor: "pointer",
+            backgroundColor: "transparent",
+            color: activeTab === "tokens" ? "white" : "#8b949e",
+            fontWeight: activeTab === "tokens" ? "600" : "400",
+          }}
+        >
+          Developer Tokens
         </UnderlineNav.Item>
       </UnderlineNav>
 
@@ -370,7 +434,114 @@ const Profile = () => {
             </div>
           )}
 
-          {activeTab === "starred" && (
+          {activeTab === "tokens" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
+                <div>
+                  <h3 style={{ margin: "0 0 6px 0", color: "#f0f6fc", fontSize: "1.2rem" }}>
+                    Personal Access Tokens (PAT)
+                  </h3>
+                  <p style={{ margin: 0, color: "#8b949e", fontSize: "0.85rem" }}>
+                    Personal access tokens function like ordinary OAuth access tokens. Use them to securely authenticate with the SafeArchive CLI without your account password.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsCreateTokenOpen(true)}
+                  style={{
+                    backgroundColor: "#238636",
+                    color: "#ffffff",
+                    border: "1px solid rgba(240,246,252,0.1)",
+                    borderRadius: "6px",
+                    padding: "6px 14px",
+                    fontSize: "0.85rem",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Generate new token
+                </button>
+              </div>
+
+              {tokenLoading && <p style={{ color: "#8b949e" }}>Loading tokens...</p>}
+
+              {!tokenLoading && tokens.length === 0 ? (
+                <div style={{
+                  backgroundColor: "#161b22",
+                  border: "1px solid #30363d",
+                  borderRadius: "6px",
+                  padding: "32px",
+                  textAlign: "center",
+                  color: "#8b949e"
+                }}>
+                  <p style={{ margin: "0 0 12px 0", fontSize: "0.95rem" }}>You haven't generated any personal access tokens yet.</p>
+                  <button
+                    onClick={() => setIsCreateTokenOpen(true)}
+                    style={{
+                      backgroundColor: "#238636",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "6px 14px",
+                      cursor: "pointer",
+                      fontWeight: "600"
+                    }}
+                  >
+                    Generate a token
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {tokens.map((t) => (
+                    <div
+                      key={t._id}
+                      style={{
+                        backgroundColor: "#161b22",
+                        border: "1px solid #30363d",
+                        borderRadius: "6px",
+                        padding: "16px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                          <span style={{ color: "#58a6ff", fontWeight: "600", fontSize: "1rem" }}>{t.name}</span>
+                          <code style={{ backgroundColor: "#21262d", color: "#8b949e", padding: "2px 8px", borderRadius: "4px", fontSize: "0.8rem" }}>
+                            {t.tokenPrefix}
+                          </code>
+                        </div>
+                        <div style={{ display: "flex", gap: "16px", color: "#8b949e", fontSize: "0.8rem" }}>
+                          <span>Scopes: <strong style={{ color: "#c9d1d9" }}>{(t.scopes || []).join(", ")}</strong></span>
+                          <span>Created: {new Date(t.createdAt).toLocaleDateString()}</span>
+                          {t.expiresAt && <span>Expires: {new Date(t.expiresAt).toLocaleDateString()}</span>}
+                          <span>Last used: {t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleDateString() : "Never"}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRevokeToken(t._id)}
+                        style={{
+                          backgroundColor: "transparent",
+                          border: "1px solid #da3633",
+                          color: "#f85149",
+                          borderRadius: "6px",
+                          padding: "4px 10px",
+                          fontSize: "0.8rem",
+                          cursor: "pointer",
+                          fontWeight: "500",
+                        }}
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+                    {activeTab === "starred" && (
             <div>
               <h4 style={{ color: "#f0f6fc", marginBottom: "16px", fontSize: "1rem" }}>
                 Starred Repositories ({starredList.length})
@@ -409,6 +580,208 @@ const Profile = () => {
           )}
         </main>
       </div>
+      {/* Modal: Generate Token */}
+      {isCreateTokenOpen && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.7)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: "#161b22",
+            border: "1px solid #30363d",
+            borderRadius: "8px",
+            width: "480px",
+            padding: "24px",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+          }}>
+            <h3 style={{ margin: "0 0 16px 0", color: "#f0f6fc", fontSize: "1.1rem" }}>
+              New Personal Access Token
+            </h3>
+            <form onSubmit={handleCreateToken}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", color: "#c9d1d9", fontSize: "0.85rem", marginBottom: "6px" }}>
+                  Note / Description *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="What's this token for? (e.g. MacBook CLI)"
+                  value={newTokenName}
+                  onChange={(e) => setNewTokenName(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    backgroundColor: "#0d1117",
+                    border: "1px solid #30363d",
+                    borderRadius: "6px",
+                    color: "#f0f6fc",
+                    fontSize: "0.9rem",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ display: "block", color: "#c9d1d9", fontSize: "0.85rem", marginBottom: "6px" }}>
+                  Expiration
+                </label>
+                <select
+                  value={newTokenDays}
+                  onChange={(e) => setNewTokenDays(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    backgroundColor: "#0d1117",
+                    border: "1px solid #30363d",
+                    borderRadius: "6px",
+                    color: "#f0f6fc",
+                    fontSize: "0.9rem",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={60}>60 days</option>
+                  <option value={90}>90 days</option>
+                  <option value={0}>No expiration</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateTokenOpen(false)}
+                  style={{
+                    backgroundColor: "#21262d",
+                    color: "#c9d1d9",
+                    border: "1px solid #30363d",
+                    borderRadius: "6px",
+                    padding: "6px 14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    backgroundColor: "#238636",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 16px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                >
+                  Generate token
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Token Created Reveal */}
+      {createdTokenValue && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.75)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1001,
+        }}>
+          <div style={{
+            backgroundColor: "#161b22",
+            border: "1px solid #238636",
+            borderRadius: "8px",
+            width: "520px",
+            padding: "24px",
+            boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
+          }}>
+            <h3 style={{ margin: "0 0 8px 0", color: "#3fb950", fontSize: "1.1rem" }}>
+              Personal Access Token Created!
+            </h3>
+            <p style={{ margin: "0 0 16px 0", color: "#8b949e", fontSize: "0.85rem" }}>
+              Make sure to copy your personal access token now. You won’t be able to see it again!
+            </p>
+
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              backgroundColor: "#0d1117",
+              border: "1px solid #30363d",
+              borderRadius: "6px",
+              padding: "10px 14px",
+              marginBottom: "16px",
+            }}>
+              <code style={{
+                color: "#e3b341",
+                fontFamily: "monospace",
+                fontSize: "0.95rem",
+                flex: 1,
+                wordBreak: "break-all",
+              }}>
+                {createdTokenValue}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(createdTokenValue);
+                  setTokenCopied(true);
+                  setTimeout(() => setTokenCopied(false), 2000);
+                }}
+                style={{
+                  backgroundColor: tokenCopied ? "#238636" : "#21262d",
+                  color: "#ffffff",
+                  border: "1px solid #30363d",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {tokenCopied ? "✓ Copied" : "Copy"}
+              </button>
+            </div>
+
+            <p style={{ margin: "0 0 20px 0", color: "#8b949e", fontSize: "0.8rem" }}>
+              Tip: Use this token in the terminal with <code style={{ color: "#c9d1d9" }}>safearchive login --token {createdTokenValue.slice(0, 10)}...</code>
+            </p>
+
+            <div style={{ textAlign: "right" }}>
+              <button
+                onClick={() => setCreatedTokenValue(null)}
+                style={{
+                  backgroundColor: "#238636",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "6px 16px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                I have saved my token
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

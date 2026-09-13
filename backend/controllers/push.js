@@ -1,3 +1,5 @@
+const { getStoredToken } = require("./auth");
+const { getCurrentBranch } = require("./branch");
 ﻿const fs = require("fs").promises;
 const path = require("path");
 const https = require("https");
@@ -119,10 +121,11 @@ async function pushRepo() {
     }
 
     // Read auth token from env or config
-    const token = process.env.SAFEARCHIVE_TOKEN || config.token || null;
+    const token = (await getStoredToken()) || config.token || null;
+    const currentBranch = await getCurrentBranch(repoPath);
     if (!token) {
       console.log("\n[SafeArchive] Web sync skipped: no auth token found.");
-      console.log("  Set SAFEARCHIVE_TOKEN=<your-jwt> in .env to enable dashboard sync.");
+      console.log("  Run 'safearchive login' with your Personal Access Token (PAT) to enable dashboard sync.");
       return;
     }
 
@@ -145,7 +148,7 @@ async function pushRepo() {
       try {
         const result = await httpPost(
           syncEndpoint,
-          { commitID: meta.commitID, message: meta.message, files: meta.files || [] },
+          { commitID: meta.commitID, message: meta.message, files: meta.files || [], branch: meta.branch || currentBranch },
           token
         );
 

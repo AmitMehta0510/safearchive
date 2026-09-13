@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 ﻿const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
@@ -21,6 +22,11 @@ const { revertRepo } = require("./controllers/revert");
 const { logRepo } = require("./controllers/log");
 const { statusRepo } = require("./controllers/status");
 const { remoteRepo } = require("./controllers/remote");
+const { cloneRepo } = require("./controllers/clone");
+const { diffRepo } = require("./controllers/diff");
+const { branchRepo } = require("./controllers/branch");
+const { checkoutRepo } = require("./controllers/checkout");
+const { login, whoami, logout, createTokenCLI } = require("./controllers/auth");
 
 dotenv.config();
 
@@ -63,6 +69,75 @@ yargs(hideBin(process.argv))
       yargs.positional("repoId", { describe: "MongoDB repository ID from the web platform", type: "string" });
     },
     (argv) => { remoteRepo(argv.repoId); }
+  )
+    .command(
+    "clone <repoUrl> [directory]",
+    "Clone a remote SafeArchive repository vault directly to local disk",
+    (yargs) => {
+      yargs
+        .positional("repoUrl", { describe: "Remote repository URL, Mongo ID, or name", type: "string" })
+        .positional("directory", { describe: "Target local directory name", type: "string" });
+    },
+    (argv) => { cloneRepo(argv.repoUrl, argv.directory); }
+  )
+  .command(
+    "diff [file]",
+    "Show visual color-coded terminal diff of changes in working tree or staging area",
+    (yargs) => {
+      yargs
+        .positional("file", { describe: "Optional specific file to diff", type: "string" })
+        .option("staged", { alias: "cached", type: "boolean", describe: "Show diff of staged changes" });
+    },
+    (argv) => { diffRepo(argv.file, argv); }
+  )
+  .command(
+    "branch [name]",
+    "List, create, or delete branches in the repository",
+    (yargs) => {
+      yargs
+        .positional("name", { describe: "Branch name to create", type: "string" })
+        .option("delete", { alias: "d", type: "string", describe: "Branch name to delete" });
+    },
+    (argv) => { branchRepo(argv.name, argv); }
+  )
+  .command(
+    "checkout <branch>",
+    "Switch branches or restore working tree files",
+    (yargs) => {
+      yargs
+        .positional("branch", { describe: "Branch name to switch to", type: "string" })
+        .option("b", { type: "boolean", describe: "Create and switch to a new branch" });
+    },
+    (argv) => { checkoutRepo(argv.branch, argv); }
+  )
+  .command(
+    "login",
+    "Authenticate CLI with a Personal Access Token (PAT)",
+    (yargs) => {
+      yargs
+        .option("token", { describe: "Personal Access Token (sat_...)", type: "string" })
+        .option("url", { describe: "SafeArchive server URL", type: "string" });
+    },
+    (argv) => { login(argv); }
+  )
+  .command("whoami", "Display the currently authenticated SafeArchive user", {}, whoami)
+  .command("logout", "Log out and clear stored CLI credentials", {}, logout)
+  .command(
+    "token <subcommand> [name]",
+    "Manage Personal Access Tokens (PAT) from the terminal",
+    (yargs) => {
+      yargs
+        .command(
+          "create [name]",
+          "Create a new Personal Access Token",
+          (y) => {
+            y.positional("name", { describe: "Token description", type: "string" })
+             .option("days", { describe: "Expiration in days (default: 30)", type: "number", default: 30 });
+          },
+          (argv) => { createTokenCLI(argv.name, argv); }
+        );
+    },
+    () => {}
   )
   .demandCommand(1, "Please provide a valid SafeArchive command (try --help)")
   .help().argv;
