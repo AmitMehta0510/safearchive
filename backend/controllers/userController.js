@@ -1,4 +1,4 @@
-﻿const mongoose = require("mongoose");
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
@@ -6,7 +6,7 @@ const Repository = require("../models/repoModel");
 const Issue = require("../models/issueModel");
 const { sendNotification } = require("../utils/notifyHelper");
 
-const JWT_SECRET = process.env.JWT_SECRET_KEY || "safearchive_jwt_secret";
+const getJwtSecret = () => process.env.JWT_SECRET_KEY || "safearchive_jwt_secret";
 
 // ── Helper: parse pagination params ──────────────────────────────────────────
 function getPagination(query) {
@@ -33,7 +33,7 @@ const signup = async (req, res) => {
     const newUser = new User({ username, email, password: hashedPassword });
     const savedUser = await newUser.save();
 
-    const token = jwt.sign({ id: savedUser._id }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: savedUser._id }, getJwtSecret(), { expiresIn: "7d" });
 
     res.status(201).json({
       message: "User registered successfully!",
@@ -66,7 +66,7 @@ const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid Credentials!" });
     }
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user._id }, getJwtSecret(), { expiresIn: "7d" });
 
     res.json({
       token,

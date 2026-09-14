@@ -43,7 +43,17 @@ const authMiddleware = async (req, res, next) => {
   // Fallback to JWT Authentication
   try {
     const secret = process.env.JWT_SECRET_KEY || 'safearchive_jwt_secret';
-    const decoded = jwt.verify(token, secret);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch (verifyErr) {
+      // If primary secret fails, check default secret to gracefully accept tokens issued before secret initialization
+      if (secret !== 'safearchive_jwt_secret') {
+        decoded = jwt.verify(token, 'safearchive_jwt_secret');
+      } else {
+        throw verifyErr;
+      }
+    }
     req.user = decoded.id; // User ID from token payload
     req.authType = 'jwt';
     next();

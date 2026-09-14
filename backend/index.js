@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-﻿const express = require("express");
-const dotenv = require("dotenv");
+require("dotenv").config();
+const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
@@ -27,8 +27,6 @@ const { diffRepo } = require("./controllers/diff");
 const { branchRepo } = require("./controllers/branch");
 const { checkoutRepo } = require("./controllers/checkout");
 const { login, whoami, logout, createTokenCLI } = require("./controllers/auth");
-
-dotenv.config();
 
 yargs(hideBin(process.argv))
   .usage("Usage: safearchive <command> [options]")
