@@ -1,11 +1,14 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import api from "../../config/api";
 import { useAuth } from "../../authContext";
-import { PageHeader } from "@primer/react/drafts";
-import { Box, Button } from "@primer/react";
-import "./auth.css";
-import logo from "../../assets/github-mark-white.svg";
 import { Link } from "react-router-dom";
+import "./auth.css";
+
+const SafeArchiveLogo = () => (
+  <svg className="auth-logo-svg" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.6-1.2-1.6 1.2a.25.25 0 0 1-.4-.2Z" />
+  </svg>
+);
 
 const Signup = () => {
   const [email, setEmail] = useState("");
@@ -13,130 +16,112 @@ const Signup = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
   const { setCurrentUser } = useAuth();
 
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
-
     if (!username.trim() || !email.trim() || !password) {
       setError("Please fill out all fields.");
       return;
     }
-
     try {
       setLoading(true);
       const res = await api.post("/signup", {
         email: email.trim(),
-        password: password,
+        password,
         username: username.trim(),
       });
-
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("userId", res.data.userId);
-
       setCurrentUser(res.data.userId);
-      setLoading(false);
-
       window.location.href = "/";
     } catch (err) {
-      console.error("Signup error:", err);
       const msg = err.response?.data?.message || "Registration failed. Please try again.";
       setError(msg);
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-wrapper">
-      <div className="login-logo-container">
-        <img className="logo-login" src={logo} alt="SafeArchive Logo" />
+    <div className="auth-page">
+      {/* Brand */}
+      <div className="auth-logo-area">
+        <SafeArchiveLogo />
+        <span className="auth-brand-name">SafeArchive</span>
+        <p className="auth-tagline">Secure cloud-backed version control</p>
       </div>
 
-      <div className="login-box-wrapper">
-        <div className="login-heading">
-          <Box sx={{ padding: 1 }}>
-            <PageHeader>
-              <PageHeader.TitleArea variant="large">
-                <PageHeader.Title>Create SafeArchive Account</PageHeader.Title>
-              </PageHeader.TitleArea>
-            </PageHeader>
-          </Box>
-        </div>
+      {/* Card */}
+      <div className="auth-card">
+        <h1>Create your account</h1>
 
-        {error && (
-          <div
-            style={{
-              backgroundColor: "rgba(248, 81, 73, 0.15)",
-              border: "1px solid #f85149",
-              color: "#ff7b72",
-              padding: "10px",
-              borderRadius: "6px",
-              marginBottom: "12px",
-              fontSize: "0.85rem",
-              textAlign: "center",
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {error && <div className="auth-error" role="alert">{error}</div>}
 
-        <div className="login-box">
-          <div>
-            <label className="label">Username</label>
+        <form onSubmit={handleSignup} noValidate>
+          <div className="auth-field">
+            <label className="auth-label" htmlFor="signup-username">
+              Username
+            </label>
             <input
-              autoComplete="off"
-              name="Username"
-              id="Username"
-              className="input"
+              id="signup-username"
+              name="username"
               type="text"
+              className="auth-input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              required
             />
           </div>
 
-          <div>
-            <label className="label">Email address</label>
+          <div className="auth-field">
+            <label className="auth-label" htmlFor="signup-email">
+              Email address
+            </label>
             <input
-              autoComplete="off"
-              name="Email"
-              id="Email"
-              className="input"
+              id="signup-email"
+              name="email"
               type="email"
+              className="auth-input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
             />
           </div>
 
-          <div className="div">
-            <label className="label">Password</label>
+          <div className="auth-field">
+            <label className="auth-label" htmlFor="signup-password">
+              Password
+            </label>
             <input
-              autoComplete="off"
-              name="Password"
-              id="Password"
-              className="input"
+              id="signup-password"
+              name="password"
               type="password"
+              className="auth-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              required
             />
           </div>
 
-          <Button
-            variant="primary"
-            className="login-btn"
+          <button
+            type="submit"
+            className="auth-submit-btn"
             disabled={loading}
-            onClick={handleSignup}
           >
-            {loading ? "Creating account..." : "Sign Up"}
-          </Button>
-        </div>
+            {loading ? "Creating account…" : "Create account"}
+          </button>
+        </form>
+      </div>
 
-        <div className="pass-box">
-          <p>
-            Already have a SafeArchive account? <Link to="/auth">Sign In</Link>
-          </p>
-        </div>
+      {/* Footer */}
+      <div className="auth-footer-card">
+        Already have an account?{" "}
+        <Link to="/auth">Sign in</Link>
       </div>
     </div>
   );
