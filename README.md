@@ -1,6 +1,10 @@
-# 🛡️ SafeArchive
+# SafeArchive
 
 > **Secure, Cloud-Backed Distributed Version Control & Developer Collaboration Platform**
+
+[![Live](https://img.shields.io/badge/Live-safearchive.vercel.app-58a6ff?style=flat-square)](https://safearchive.vercel.app)
+[![API](https://img.shields.io/badge/API-safearchive--5plv.onrender.com-3fb950?style=flat-square)](https://safearchive-5plv.onrender.com)
+[![License](https://img.shields.io/badge/License-ISC-a371f7?style=flat-square)](#-license)
 
 SafeArchive is an end-to-end full-stack Git and GitHub alternative. It combines a lightweight, local distributed version control engine (CLI) with dual-storage cloud synchronization (AWS S3 for raw file artifacts + MongoDB for metadata and revision logs) and a modern, high-performance web collaboration platform (React 18 + Node.js + WebSockets).
 
@@ -44,7 +48,7 @@ SafeArchive is an end-to-end full-stack Git and GitHub alternative. It combines 
 - **`safearchive diff [file]`**: Visual color-coded terminal diff showing added and removed lines between commits and working tree.
 - **`safearchive branch [name]`**: List branches, view current active branch, or create new branches.
 - **`safearchive checkout <branch>`**: Switch between local branches and restore working tree state.
-- **`safearchive remote <repoId>`**: Link your local directory to a remote web platform repository (MongoDB ID).
+- **`safearchive remote <username/reponame>`**: Link your local directory to a remote web platform repository using the human-readable `username/reponame` slug (e.g. `safearchive remote AmitMehta0510/myrepo`). Also accepts raw MongoDB ID for backward compatibility.
 - **`safearchive push`**: Dual-sync engine — uploads committed artifacts to AWS S3 (`commits/<id>/<file>`) and simultaneously syncs commit metadata and file lists to the web platform via authenticated API.
 - **`safearchive pull`**: Pull and unpack remote commit artifacts from AWS S3 into your local vault.
 - **`safearchive clone <repoUrl> [dir]`**: Clone a remote repository vault directly from cloud storage to local disk.
@@ -53,6 +57,7 @@ SafeArchive is an end-to-end full-stack Git and GitHub alternative. It combines 
 - **`safearchive token <create|list|revoke>`**: Manage developer access tokens directly from the terminal.
 
 ### 🌐 2. Web Collaboration Platform (Frontend & API)
+- **🚀 Quick Setup Tab**: Every new repository shows a GitHub-style setup panel with pre-filled, copy-able CLI commands (using `username/reponame` slug) for both new and existing projects. Disappears once the first commit is pushed.
 - **Repository Management**: Create public or private repositories, edit metadata, configure descriptions, and manage repository settings.
 - **In-Browser Code & Tree Explorer**: Navigate repository file trees, preview files with line numbers and syntax styling, and create or edit files directly in the browser across any branch.
 - **Multi-Branching System**: Switch active branches via dropdown, create branches, and delete stale branches with instantaneous tree updates.
@@ -66,7 +71,7 @@ SafeArchive is an end-to-end full-stack Git and GitHub alternative. It combines 
 - **365-Day Contribution Heatmap**: Dynamic, rolling 52-week activity calendar calculating contributions (repo creations, commits, issues), active streaks, and live socket updates.
 - **Customizable Profile**: Showcase up to 6 pinned repositories, edit bio, company, location, and external website links.
 - **Real-Time WebSockets**: Live bi-directional updates for commit pushes, repository creations, issues, and star events powered by Socket.IO.
-- **Production UI/UX**: Sticky glassmorphic navbar, responsive dark mode design system, Google Fonts typography (Inter), animated shimmer loading skeletons, and SEO meta tags.
+- **Production UI/UX**: SA monogram logo & favicon, sticky glassmorphic navbar, responsive dark mode design system, Google Fonts typography (Inter), animated shimmer loading skeletons, and SEO meta tags.
 
 ---
 
@@ -79,6 +84,16 @@ SafeArchive is an end-to-end full-stack Git and GitHub alternative. It combines 
 | **CLI Engine** | Node.js, Yargs, `fs/promises`, UUID, native HTTP/HTTPS client |
 | **Cloud Storage** | AWS SDK (Amazon S3) for commit archives and downloadable zips |
 | **Security** | Helmet, express-rate-limit, express-validator, Personal Access Token SHA-256 hashing |
+| **Deployment** | Vercel (frontend), Render (backend), MongoDB Atlas, AWS S3 |
+
+---
+
+## 🌍 Live Deployment
+
+| Service | URL |
+|---|---|
+| **Frontend (Vercel)** | https://safearchive.vercel.app |
+| **Backend API (Render)** | https://safearchive-5plv.onrender.com |
 
 ---
 
@@ -113,6 +128,7 @@ AWS_REGION=ap-south-1
 AWS_ACCESS_KEY_ID=your_aws_access_key
 AWS_SECRET_ACCESS_KEY=your_aws_secret_key
 S3_BUCKET=your_s3_bucket_name
+ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:5173
 ```
 
 Start the API and WebSocket server:
@@ -137,13 +153,22 @@ npm run dev
 ```
 *Web dashboard will be available at `http://localhost:5173`.*
 
+Set `VITE_API_URL` in your `.env` (or Vercel environment variables) to point to your backend:
+```env
+VITE_API_URL=https://safearchive-5plv.onrender.com
+```
+
 ---
 
 ### 4. CLI Setup & Workflow
 
-You can run the SafeArchive CLI globally across your computer:
+Install the SafeArchive CLI globally from npm or link it locally:
 
 ```bash
+# Option A: Install globally (once backend is deployed)
+npm install -g safearchive
+
+# Option B: Link locally from source (for development)
 # From the safearchive/backend directory
 npm link
 ```
@@ -169,12 +194,14 @@ safearchive commit "Initial project commit"
 # 6. Check repository status
 safearchive status
 
-# 7. Link to your web repository (copy repository ID from the browser URL: /repo/<repoId>)
-safearchive remote <your_repo_id>
+# 7. Link to your web repository using username/reponame slug (visible on the repo's Setup tab)
+safearchive remote AmitMehta0510/my-project
 
 # 8. Push to AWS S3 & sync to web dashboard
 safearchive push
 ```
+
+> **Tip:** The `username/reponame` format is shown as a ready-to-copy command on every repository's **🚀 Setup tab** — no need to manually find any IDs.
 
 #### Additional CLI Commands:
 ```bash
@@ -188,12 +215,41 @@ safearchive whoami                 # Check authenticated user
 
 ---
 
+## ☁️ Deploying to Production
+
+### Frontend → Vercel
+
+1. Push this repo to GitHub.
+2. Import the project on [vercel.com](https://vercel.com).
+3. Set **Root Directory** to `frontend`.
+4. Add environment variable: `VITE_API_URL` = your Render backend URL.
+5. Deploy. Vercel handles SPA routing automatically via `frontend/vercel.json`.
+
+### Backend → Render
+
+1. Create a **Web Service** on [render.com](https://render.com).
+2. Set **Root Directory** to `backend`, **Start Command** to `node index.js start`.
+3. Add environment variables in the Render dashboard:
+
+| Key | Value |
+|-----|-------|
+| `MONGODB_URI` | Your MongoDB Atlas connection string |
+| `JWT_SECRET_KEY` | A strong random secret |
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
+| `AWS_REGION` | e.g. `ap-south-1` |
+| `S3_BUCKET` | Your S3 bucket name |
+| `ALLOWED_ORIGINS` | Your Vercel frontend URL (no trailing slash) |
+
+---
+
 ## 🔒 Security & Best Practices
 
 - **Personal Access Tokens (PAT)**: Stored as SHA-256 hashes in MongoDB; raw tokens (`sat_...`) are shown only once at creation.
 - **Graceful JWT Secret Handling**: Dynamic secret getters prevent startup timing mismatches and support seamless session continuity.
 - **Sensitive File Protection**: CLI staging automatically excludes `.env`, credential stores, `.safearchive`, `.git`, and dependency trees.
-- **Production Defense**: HTTP security headers via `helmet`, rate limiting on sensitive routes, and input validation via `express-validator`.
+- **Production Defense**: HTTP security headers via `helmet`, rate limiting on sensitive routes, input validation via `express-validator`, and strict CORS allowlist via `ALLOWED_ORIGINS`.
+- **Username Validation**: Usernames support letters, numbers, dots (`.`), hyphens (`-`), and underscores (`_`), validated on both client and server.
 
 ---
 
