@@ -360,13 +360,15 @@ const recordCommit = async (req, res) => {
     // Broadcast socket event
     const io = req.app.get("io");
     if (io) {
-      io.to("repo_" + id).emit("activity", {
+      const payload = {
         type: "commit_pushed",
         repoName: repository.name,
         commitID: commitID.slice(0, 8),
         message,
         timestamp: new Date().toISOString(),
-      });
+      };
+      io.to("repo_" + id).emit("activity", payload);
+      io.emit("activity", payload);
     }
 
     // Trigger SafeArchive Actions & Webhooks
@@ -978,14 +980,16 @@ const createOrUpdateFile = async (req, res) => {
 
     const io = req.app.get("io");
     if (io) {
-      io.to(`repo_${id}`).emit("activity", {
+      const payload = {
         type: "commit_pushed",
         repoName: repository.name,
         commitID,
         branch: targetBranch,
         message: commitMsg,
         timestamp: new Date().toISOString(),
-      });
+      };
+      io.to(`repo_${id}`).emit("activity", payload);
+      io.emit("activity", payload);
     }
 
     res.status(201).json({
