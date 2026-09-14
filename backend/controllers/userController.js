@@ -367,11 +367,16 @@ const getUserContributions = async (req, res) => {
     const repoIds = userRepos.map((r) => r._id);
     const userIssues = await Issue.find({ repository: { $in: repoIds } }).select("_id");
 
-    // Build activity map over 365 days
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const thisSunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dayOfWeek);
-    const startDate = new Date(thisSunday.getFullYear(), thisSunday.getMonth(), thisSunday.getDate() - 52 * 7);
+    // Build activity map over 365 days using pure UTC dates
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
+    const [todayY, todayM, todayD] = todayStr.split("-").map(Number);
+    const todayUTC = new Date(Date.UTC(todayY, todayM - 1, todayD));
+
+    const dayOfWeek = todayUTC.getUTCDay(); // 0 is Sunday
+    const thisSundayUTC = new Date(Date.UTC(todayY, todayM - 1, todayD - dayOfWeek));
+    const startDateUTC = new Date(Date.UTC(thisSundayUTC.getUTCFullYear(), thisSundayUTC.getUTCMonth(), thisSundayUTC.getUTCDate() - 52 * 7));
+    const startStr = startDateUTC.toISOString().split("T")[0];
 
     const activityMap = {};
     let totalContributions = 0;
@@ -381,7 +386,7 @@ const getUserContributions = async (req, res) => {
     // Count repo creations
     userRepos.forEach((repo) => {
       const dateKey = toDateKey(repo._id.getTimestamp());
-      if (new Date(dateKey) >= startDate) {
+      if (dateKey >= startStr && dateKey <= todayStr) {
         activityMap[dateKey] = (activityMap[dateKey] || 0) + 3;
         totalContributions += 3;
       }
@@ -389,7 +394,7 @@ const getUserContributions = async (req, res) => {
       // Count commits per day
       (repo.commits || []).forEach((commit) => {
         const commitDate = toDateKey(commit.date);
-        if (new Date(commitDate) >= startDate) {
+        if (commitDate >= startStr && commitDate <= todayStr) {
           activityMap[commitDate] = (activityMap[commitDate] || 0) + 2;
           totalContributions += 2;
         }
@@ -399,19 +404,19 @@ const getUserContributions = async (req, res) => {
     // Count issues
     userIssues.forEach((issue) => {
       const dateKey = toDateKey(issue._id.getTimestamp());
-      if (new Date(dateKey) >= startDate) {
+      if (dateKey >= startStr && dateKey <= todayStr) {
         activityMap[dateKey] = (activityMap[dateKey] || 0) + 1;
         totalContributions += 1;
       }
     });
 
-    // Build continuous day array
+    // Build continuous day array through todayUTC inclusive
     const data = [];
-    const cur = new Date(startDate);
-    while (cur <= today) {
-      const dateStr = toDateKey(cur);
+    const cur = new Date(startDateUTC);
+    while (cur <= todayUTC) {
+      const dateStr = cur.toISOString().split("T")[0];
       data.push({ date: dateStr, count: activityMap[dateStr] || 0 });
-      cur.setDate(cur.getDate() + 1);
+      cur.setUTCDate(cur.getUTCDate() + 1);
     }
 
     // Calculate current streak
@@ -428,8 +433,8 @@ const getUserContributions = async (req, res) => {
       repoCount: userRepos.length,
       commitCount: userRepos.reduce((acc, r) => acc + (r.commits?.length || 0), 0),
       issueCount: userIssues.length,
-      startDate: startDate.toISOString().split("T")[0],
-      endDate: today.toISOString().split("T")[0],
+      startDate: startStr,
+      endDate: todayStr,
     });
   } catch (err) {
     console.error("Error generating contributions:", err.message);

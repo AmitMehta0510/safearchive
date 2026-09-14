@@ -76,6 +76,7 @@ const HeatMapProfile = ({ userId }) => {
         repoCount: res.data.repoCount || 0,
         commitCount: res.data.commitCount || 0,
         issueCount: res.data.issueCount || 0,
+        startDate: res.data.startDate,
       });
       setLastUpdated(new Date());
     } catch (err) {
@@ -140,6 +141,22 @@ const HeatMapProfile = ({ userId }) => {
                 ● Live · updated {formattedLastUpdated}
               </span>
             )}
+            <button
+              onClick={() => fetchContributions()}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#58a6ff",
+                cursor: "pointer",
+                fontSize: "0.78rem",
+                marginLeft: "8px",
+                textDecoration: "underline",
+                padding: 0,
+              }}
+              title="Refresh contribution activity"
+            >
+              ↻ Refresh
+            </button>
           </span>
         </div>
 
@@ -228,7 +245,7 @@ const HeatMapProfile = ({ userId }) => {
               width={825}
               value={activityData}
               weekLabels={["", "Mon", "", "Wed", "", "Fri", ""]}
-              startDate={getStartSunday()}
+              startDate={summary.startDate ? new Date(summary.startDate + "T00:00:00") : getStartSunday()}
               rectSize={12}
               space={3}
               rectProps={{ rx: 2 }}
