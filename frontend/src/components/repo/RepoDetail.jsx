@@ -288,6 +288,10 @@ const RepoDetail = () => {
     repo ? `${repo.name}` : "Repository",
     repo ? `View and manage the ${repo.name} repository on SafeArchive.` : ""
   );
+  // Override title to 'SafeArchive | reponame' format
+  useEffect(() => {
+    if (repo) document.title = `SafeArchive | ${repo.name}`;
+  }, [repo]);
 
   const fetchRepoData = useCallback(async () => {
     try {
@@ -888,91 +892,76 @@ const RepoDetail = () => {
           </p>
         </header>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs — GitHub order: Code | Issues | Pull requests | Commits | Actions | Releases | Setup | Settings */}
         <nav className="repo-nav-tabs">
+          {/* Code */}
           <button
             className={`repo-tab ${activeTab === "code" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("code");
-              setSelectedCommitDiff(null);
-            }}
+            onClick={() => { setActiveTab("code"); setSelectedCommitDiff(null); }}
           >
             Code
             <span className="tab-counter">{tree.length || (repo.content || []).length}</span>
           </button>
-          <button
-            className={`repo-tab ${activeTab === "setup" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("setup");
-              setSelectedCommitDiff(null);
-            }}
-            style={{ display: "flex", alignItems: "center", gap: "5px" }}
-          >
-            <span>🚀</span> Setup
-          </button>
-          <button
-            className={`repo-tab ${activeTab === "commits" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("commits");
-              setSelectedCommitDiff(null);
-              fetchCommitStatuses(commits);
-            }}
-          >
-            Commits
-            <span className="tab-counter">{commits.length}</span>
-          </button>
-          <button
-            className={`repo-tab ${activeTab === "pulls" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("pulls");
-              setSelectedCommitDiff(null);
-              setSelectedFile(null);
-            }}
-          >
-            Pull requests
-            <span className="tab-counter">{prCounts.openCount || 0}</span>
-          </button>
+
+          {/* Issues */}
           <button
             className={`repo-tab ${activeTab === "issues" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("issues");
-              setSelectedCommitDiff(null);
-            }}
+            onClick={() => { setActiveTab("issues"); setSelectedCommitDiff(null); }}
           >
             Issues
             <span className="tab-counter">{openCount}</span>
           </button>
+
+          {/* Pull requests */}
+          <button
+            className={`repo-tab ${activeTab === "pulls" ? "active" : ""}`}
+            onClick={() => { setActiveTab("pulls"); setSelectedCommitDiff(null); setSelectedFile(null); }}
+          >
+            Pull requests
+            <span className="tab-counter">{prCounts.openCount || 0}</span>
+          </button>
+
+          {/* Commits */}
+          <button
+            className={`repo-tab ${activeTab === "commits" ? "active" : ""}`}
+            onClick={() => { setActiveTab("commits"); setSelectedCommitDiff(null); fetchCommitStatuses(commits); }}
+          >
+            Commits
+            <span className="tab-counter">{commits.length}</span>
+          </button>
+
+          {/* Actions */}
           <button
             className={`repo-tab ${activeTab === "actions" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("actions");
-              setSelectedCommitDiff(null);
-              setSelectedRun(null);
-              fetchActionsRuns();
-            }}
+            onClick={() => { setActiveTab("actions"); setSelectedCommitDiff(null); setSelectedRun(null); fetchActionsRuns(); }}
           >
             Actions
             <span className="tab-counter">{actionsRuns.length}</span>
           </button>
+
+          {/* Releases */}
           <button
             className={`repo-tab ${activeTab === "releases" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("releases");
-              setSelectedCommitDiff(null);
-              fetchReleases();
-            }}
+            onClick={() => { setActiveTab("releases"); setSelectedCommitDiff(null); fetchReleases(); }}
           >
             Releases
             <span className="tab-counter">{releases.length}</span>
           </button>
+
+          {/* Setup */}
+          <button
+            className={`repo-tab ${activeTab === "setup" ? "active" : ""}`}
+            onClick={() => { setActiveTab("setup"); setSelectedCommitDiff(null); }}
+            style={{ display: "flex", alignItems: "center", gap: "4px" }}
+          >
+            <span>🚀</span> Setup
+          </button>
+
+          {/* Settings — owner only */}
           {isOwner && (
             <button
               className={`repo-tab ${activeTab === "settings" ? "active" : ""}`}
-              onClick={() => {
-                setActiveTab("settings");
-                setSelectedCommitDiff(null);
-                fetchWebhooks();
-              }}
+              onClick={() => { setActiveTab("settings"); setSelectedCommitDiff(null); fetchWebhooks(); }}
             >
               Settings
             </button>
@@ -1025,26 +1014,6 @@ const RepoDetail = () => {
                 {readmeContent && (
                   <ReadmeViewer content={readmeContent} repoName={repo.name} />
                 )}
-
-                <section className="cli-banner" style={{ marginTop: "24px" }}>
-                  <h4>Quick Setup & Remote Sync with SafeArchive CLI</h4>
-                  <p style={{ fontSize: "0.85rem", color: "#8b949e", margin: "4px 0 12px 0" }}>
-                    Get started with your terminal using SafeArchive CLI commands on branch <code>{activeBranch}</code>:
-                  </p>
-                  <pre className="cli-code-block">
-                    <code>
-{`# 1. Initialize SafeArchive in your local workspace
-safearchive init
-
-# 2. Stage and commit your files
-safearchive add .
-safearchive commit "Initial commit"
-
-# 3. Push snapshots directly to SafeArchive vault
-safearchive push`}
-                    </code>
-                  </pre>
-                </section>
               </>
             )}
           </main>
