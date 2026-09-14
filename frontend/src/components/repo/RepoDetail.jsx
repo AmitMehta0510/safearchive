@@ -46,6 +46,7 @@ const RepoDetail = () => {
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [dispatchBranch, setDispatchBranch] = useState("main");
   const [actionsLoading, setActionsLoading] = useState(false);
+  const [commitStatuses, setCommitStatuses] = useState({}); // { commitID: { status, conclusion } }
 
   // Phase 5: Releases State
   const [releases, setReleases] = useState([]);
@@ -404,6 +405,23 @@ const RepoDetail = () => {
     }
   };
 
+  // Fetch CI status for each commit and store in a map
+  const fetchCommitStatuses = async (commitList) => {
+    if (!commitList || commitList.length === 0) return;
+    const statusMap = {};
+    await Promise.allSettled(
+      commitList.slice(0, 20).map(async (commit) => {
+        try {
+          const res = await api.get(`/repo/${id}/commits/${commit.commitID}/status`);
+          statusMap[commit.commitID] = res.data;
+        } catch {
+          statusMap[commit.commitID] = { status: "none", conclusion: "none" };
+        }
+      })
+    );
+    setCommitStatuses((prev) => ({ ...prev, ...statusMap }));
+  };
+
   const handleDispatchWorkflow = async (e) => {
     e.preventDefault();
     try {
@@ -697,6 +715,7 @@ const RepoDetail = () => {
             onClick={() => {
               setActiveTab("commits");
               setSelectedCommitDiff(null);
+              fetchCommitStatuses(commits);
             }}
           >
             Commits
@@ -865,6 +884,46 @@ safearchive push`}
                           <div className="commit-title-row">
                             <span className="commit-message">{commit.message}</span>
                             <span className="commit-badge-branch">{commit.branch || "main"}</span>
+                            {(() => {
+                              const cs = commitStatuses[commit.commitID];
+                              if (!cs || cs.status === "none") return null;
+                              const ciColor =
+                                cs.conclusion === "success" ? "#3fb950"
+                                : cs.conclusion === "failure" ? "#f85149"
+                                : cs.status === "in_progress" ? "#d29922"
+                                : "#8b949e";
+                              const ciLabel =
+                                cs.conclusion === "success" ? "CI: passed"
+                                : cs.conclusion === "failure" ? "CI: failed"
+                                : cs.status === "in_progress" ? "CI: running"
+                                : "CI: " + cs.status;
+                              return (
+                                <span
+                                  title={ciLabel}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    fontSize: "0.75rem",
+                                    color: ciColor,
+                                    border: `1px solid ${ciColor}`,
+                                    borderRadius: "12px",
+                                    padding: "1px 8px",
+                                    marginLeft: "6px",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: "7px",
+                                      height: "7px",
+                                      borderRadius: "50%",
+                                      backgroundColor: ciColor,
+                                    }}
+                                  />
+                                  {ciLabel}
+                                </span>
+                              );
+                            })()}
                           </div>
                           <div className="commit-meta">
                             <span>ID: <code>{commit.commitID}</code></span>
