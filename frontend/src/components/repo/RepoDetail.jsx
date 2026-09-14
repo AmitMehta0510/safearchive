@@ -16,6 +16,185 @@ import { SkeletonRepoHeader, SkeletonCard } from "../Skeleton";
 import usePageMeta from "../../hooks/usePageMeta";
 import "./repoDetail.css";
 
+// ── Quick Setup Panel ─────────────────────────────────────────────────────────
+const CopyButton = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy to clipboard"
+      style={{
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        color: copied ? "#3fb950" : "#8b949e",
+        fontSize: "0.8rem",
+        padding: "2px 6px",
+        borderRadius: "4px",
+        flexShrink: 0,
+        transition: "color 0.2s",
+      }}
+    >
+      {copied ? "✓" : "⎘"}
+    </button>
+  );
+};
+
+const CmdLine = ({ cmd }) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "8px",
+      padding: "4px 12px",
+      borderRadius: "4px",
+      background: "#0d1117",
+    }}
+  >
+    <code style={{ fontSize: "0.82rem", color: "#e6edf3", wordBreak: "break-all" }}>
+      {cmd}
+    </code>
+    <CopyButton text={cmd} />
+  </div>
+);
+
+const QuickSetupPanel = ({ repo }) => {
+  const ownerSlug = repo?.owner?.username
+    ? `${repo.owner.username}/${repo.name}`
+    : repo?.name || "<repo>";
+
+  const newProjectCmds = [
+    "npm install -g safearchive",
+    "cd /path/to/your-project",
+    "safearchive init",
+    "safearchive login",
+    `safearchive remote ${ownerSlug}`,
+    "safearchive add .",
+    'safearchive commit "Initial commit"',
+    "safearchive push",
+  ];
+
+  const existingCmds = [
+    "cd /path/to/your-project",
+    `safearchive remote ${ownerSlug}`,
+    "safearchive push",
+  ];
+
+  const sectionStyle = {
+    background: "#161b22",
+    border: "1px solid #30363d",
+    borderRadius: "8px",
+    padding: "16px",
+    flex: 1,
+    minWidth: 0,
+  };
+
+  const headingStyle = {
+    margin: "0 0 12px",
+    fontSize: "0.85rem",
+    color: "#8b949e",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  };
+
+  return (
+    <div style={{ padding: "24px 0" }}>
+      {/* Header */}
+      <div
+        style={{
+          background: "#161b22",
+          border: "1px solid #30363d",
+          borderRadius: "8px",
+          padding: "20px 24px",
+          marginBottom: "20px",
+        }}
+      >
+        <h3 style={{ margin: "0 0 6px", color: "#f0f6fc", fontSize: "1rem" }}>
+          🚀 Quick Setup — connect your local project
+        </h3>
+        <p style={{ margin: 0, fontSize: "0.85rem", color: "#8b949e" }}>
+          This repository is empty. Push your first commit using the{" "}
+          <code
+            style={{
+              background: "#0d1117",
+              padding: "1px 5px",
+              borderRadius: "4px",
+              color: "#e6edf3",
+            }}
+          >
+            safearchive
+          </code>{" "}
+          CLI.
+        </p>
+
+        {/* Remote slug pill */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginTop: "14px",
+            background: "#0d1117",
+            border: "1px solid #30363d",
+            borderRadius: "6px",
+            padding: "8px 14px",
+          }}
+        >
+          <span style={{ fontSize: "0.8rem", color: "#8b949e" }}>remote:</span>
+          <code style={{ fontSize: "0.88rem", color: "#79c0ff" }}>{ownerSlug}</code>
+          <CopyButton text={ownerSlug} />
+        </div>
+      </div>
+
+      {/* Two-column command blocks */}
+      <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+        {/* New project */}
+        <div style={sectionStyle}>
+          <h4 style={headingStyle}>…create a new project</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {newProjectCmds.map((cmd) => (
+              <CmdLine key={cmd} cmd={cmd} />
+            ))}
+          </div>
+        </div>
+
+        {/* Existing project */}
+        <div style={sectionStyle}>
+          <h4 style={headingStyle}>…connect an existing project</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {existingCmds.map((cmd) => (
+              <CmdLine key={cmd} cmd={cmd} />
+            ))}
+          </div>
+          <div
+            style={{
+              marginTop: "20px",
+              padding: "12px",
+              background: "#0d1117",
+              borderRadius: "6px",
+              border: "1px solid #30363d",
+            }}
+          >
+            <p style={{ margin: "0 0 6px", fontSize: "0.8rem", color: "#8b949e" }}>
+              ℹ️ First time? Install the CLI once globally:
+            </p>
+            <CmdLine cmd="npm install -g safearchive" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const RepoDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -885,9 +1064,7 @@ safearchive push`}
 
                 <div className="commits-timeline">
                   {commits.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
-                      No commits recorded on this branch yet.
-                    </div>
+                    <QuickSetupPanel repo={repo} />
                   ) : (
                     commits.map((commit) => (
                       <div key={commit.commitID} className="commit-row">
