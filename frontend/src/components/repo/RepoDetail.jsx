@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "../../config/api";
 import Navbar from "../Navbar";
@@ -108,6 +108,7 @@ const RepoDetail = () => {
       const repoData = Array.isArray(res.data) ? res.data[0] : res.data;
       setRepo(repoData);
       setNewDescription(repoData?.description || "");
+      setStarCount(repoData?.starCount ?? (repoData?.starRepos?.length ?? 0));
 
       // Fetch branches
       try {
