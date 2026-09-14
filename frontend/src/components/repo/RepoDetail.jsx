@@ -752,6 +752,7 @@ const RepoDetail = () => {
               onClick={() => {
                 setActiveTab("settings");
                 setSelectedCommitDiff(null);
+                fetchWebhooks();
               }}
             >
               Settings
@@ -1920,6 +1921,113 @@ safearchive push`}
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: WEBHOOK DELIVERIES */}
+        {selectedDeliveries !== null && (
+          <div className="modal-overlay" onClick={() => setSelectedDeliveries(null)}>
+            <div
+              className="modal-content"
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: "700px", width: "95%" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "16px",
+                }}
+              >
+                <h3 style={{ margin: 0 }}>Webhook Deliveries</h3>
+                <button
+                  className="btn-secondary"
+                  style={{ fontSize: "0.8rem" }}
+                  onClick={() => setSelectedDeliveries(null)}
+                >
+                  ✕ Close
+                </button>
+              </div>
+              {selectedDeliveries.length === 0 ? (
+                <p style={{ color: "#8b949e" }}>No deliveries recorded yet for this webhook.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "60vh", overflowY: "auto" }}>
+                  {selectedDeliveries.map((delivery, idx) => {
+                    const isSuccess =
+                      delivery.statusCode >= 200 && delivery.statusCode < 300;
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          backgroundColor: "#0d1117",
+                          border: `1px solid ${isSuccess ? "#238636" : "#da3633"}`,
+                          borderRadius: "6px",
+                          padding: "12px 14px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span
+                              style={{
+                                color: isSuccess ? "#3fb950" : "#f85149",
+                                fontWeight: 700,
+                                fontFamily: "monospace",
+                                fontSize: "0.9rem",
+                              }}
+                            >
+                              {delivery.statusCode || "—"}
+                            </span>
+                            <span
+                              style={{
+                                backgroundColor: isSuccess ? "#238636" : "#da3633",
+                                color: "#fff",
+                                padding: "1px 8px",
+                                borderRadius: "12px",
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              {isSuccess ? "Success" : "Failed"}
+                            </span>
+                            <code style={{ fontSize: "0.8rem", color: "#8b949e" }}>
+                              {delivery.event || "push"}
+                            </code>
+                          </div>
+                          <span style={{ fontSize: "0.78rem", color: "#8b949e" }}>
+                            {delivery.deliveredAt
+                              ? new Date(delivery.deliveredAt).toLocaleString()
+                              : ""}
+                          </span>
+                        </div>
+                        {delivery.responseBody && (
+                          <pre
+                            style={{
+                              margin: 0,
+                              backgroundColor: "#161b22",
+                              padding: "8px",
+                              borderRadius: "4px",
+                              fontSize: "0.78rem",
+                              color: "#8b949e",
+                              overflowX: "auto",
+                              maxHeight: "100px",
+                            }}
+                          >
+                            {delivery.responseBody}
+                          </pre>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
