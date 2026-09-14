@@ -72,3 +72,8 @@ button:focus-visible {
 ::-webkit-scrollbar-track { background: #0d1117; }
 ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+/* Skeleton shimmer keyframes */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

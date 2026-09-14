@@ -4,6 +4,7 @@ import "./dashboard.css";
 import Navbar from "../Navbar";
 import api from "../../config/api";
 import socket from "../../config/socket";
+import { SkeletonCard } from "../Skeleton";
 
 const Dashboard = () => {
   const [repositories, setRepositories] = useState([]);
@@ -144,7 +145,9 @@ const Dashboard = () => {
           </div>
 
           {loading ? (
-            <p style={{ color: "#8b949e" }}>Loading repositories...</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {[1, 2, 3, 4].map((n) => <SkeletonCard key={n} />)}
+            </div>
           ) : searchResults.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
               <p>{searchQuery ? "No matching repositories found." : "You have not created any repositories yet."}</p>

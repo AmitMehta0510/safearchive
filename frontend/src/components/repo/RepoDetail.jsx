@@ -12,6 +12,7 @@ import PullRequestDetail from "./PullRequestDetail";
 import NewPullRequestModal from "./NewPullRequestModal";
 import ReactionPicker from "../ReactionPicker";
 import IssueDetail from "../issue/IssueDetail";
+import { SkeletonRepoHeader, SkeletonCard } from "../Skeleton";
 import "./repoDetail.css";
 
 const RepoDetail = () => {
@@ -594,8 +595,11 @@ const RepoDetail = () => {
     return (
       <>
         <Navbar />
-        <div style={{ textAlign: "center", padding: "60px", color: "#8b949e" }}>
-          Loading SafeArchive repository...
+        <div className="repo-detail-container">
+          <SkeletonRepoHeader />
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginTop: "16px" }}>
+            {[1, 2, 3, 4].map((n) => <SkeletonCard key={n} />)}
+          </div>
         </div>
       </>
     );

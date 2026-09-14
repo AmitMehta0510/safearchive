@@ -7,6 +7,7 @@ import { UnderlineNav } from "@primer/react";
 import { BookIcon, RepoIcon, StarIcon, KeyIcon } from "@primer/octicons-react";
 import HeatMapProfile from "./HeatMap";
 import { useAuth } from "../../authContext";
+import { SkeletonCard, SkeletonProfileSidebar } from "../Skeleton";
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -96,8 +97,15 @@ const Profile = () => {
     return (
       <>
         <Navbar />
-        <div style={{ textAlign: "center", padding: "60px", color: "#8b949e" }}>
-          Loading profile...
+        <div style={{ maxWidth: "1100px", margin: "32px auto", padding: "0 20px", display: "flex", gap: "28px" }}>
+          {/* Sidebar skeleton */}
+          <aside style={{ width: "240px", flexShrink: 0 }}>
+            <SkeletonProfileSidebar />
+          </aside>
+          {/* Main content skeletons */}
+          <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: "14px" }}>
+            {[1, 2, 3].map((n) => <SkeletonCard key={n} />)}
+          </main>
         </div>
       </>
     );
