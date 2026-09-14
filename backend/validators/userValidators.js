@@ -1,4 +1,4 @@
-﻿const { body } = require("express-validator");
+const { body } = require("express-validator");
 
 // ── Signup ────────────────────────────────────────────────────────────────────
 const validateSignup = [
@@ -6,7 +6,7 @@ const validateSignup = [
     .trim()
     .notEmpty().withMessage("Username is required")
     .isLength({ min: 3, max: 30 }).withMessage("Username must be 3–30 characters")
-    .matches(/^[a-zA-Z0-9_-]+$/).withMessage("Username can only contain letters, numbers, hyphens, and underscores"),
+    .matches(/^[a-zA-Z0-9._-]+$/).withMessage("Username can only contain letters, numbers, dots (.), hyphens (-), and underscores (_)"),
 
   body("email")
     .trim()

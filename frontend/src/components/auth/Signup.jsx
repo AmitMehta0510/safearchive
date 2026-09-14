@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import api from "../../config/api";
 import { useAuth } from "../../authContext";
 import { Link } from "react-router-dom";
@@ -18,11 +18,21 @@ const Signup = () => {
   const [error, setError] = useState("");
   const { setCurrentUser } = useAuth();
 
+  const USERNAME_REGEX = /^[a-zA-Z0-9._-]+$/;
+
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
     if (!username.trim() || !email.trim() || !password) {
       setError("Please fill out all fields.");
+      return;
+    }
+    if (username.trim().length < 3 || username.trim().length > 30) {
+      setError("Username must be 3–30 characters.");
+      return;
+    }
+    if (!USERNAME_REGEX.test(username.trim())) {
+      setError("Username can only contain letters, numbers, dots (.), hyphens (-), and underscores (_).");
       return;
     }
     try {
@@ -37,7 +47,13 @@ const Signup = () => {
       setCurrentUser(res.data.userId);
       window.location.href = "/";
     } catch (err) {
-      const msg = err.response?.data?.message || "Registration failed. Please try again.";
+      const data = err.response?.data;
+      // express-validator returns { error, details: [{field, message}] }
+      // controller errors return { message }
+      const msg =
+        data?.details?.[0]?.message ||
+        data?.message ||
+        "Registration failed. Please try again.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -74,6 +90,11 @@ const Signup = () => {
               autoComplete="username"
               required
             />
+            <p style={{ fontSize: "0.75rem", color: "#8b949e", margin: "4px 0 0" }}>
+              3–30 characters. Letters, numbers, <code style={{ background: "#161b22", padding: "1px 4px", borderRadius: "3px" }}>.</code>{" "}
+              <code style={{ background: "#161b22", padding: "1px 4px", borderRadius: "3px" }}>_</code>{" "}
+              <code style={{ background: "#161b22", padding: "1px 4px", borderRadius: "3px" }}>-</code> allowed.
+            </p>
           </div>
 
           <div className="auth-field">
