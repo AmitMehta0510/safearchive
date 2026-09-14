@@ -205,7 +205,7 @@ const RepoDetail = () => {
   const [tree, setTree] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("code"); // "code" | "commits" | "pulls" | "issues" | "settings"
+  const [activeTab, setActiveTab] = useState("setup"); // "setup" | "code" | "commits" | "pulls" | "issues" | "settings"
 
   // Multi-Branch State
   const [activeBranch, setActiveBranch] = useState("main");
@@ -901,6 +901,16 @@ const RepoDetail = () => {
             <span className="tab-counter">{tree.length || (repo.content || []).length}</span>
           </button>
           <button
+            className={`repo-tab ${activeTab === "setup" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("setup");
+              setSelectedCommitDiff(null);
+            }}
+            style={{ display: "flex", alignItems: "center", gap: "5px" }}
+          >
+            <span>🚀</span> Setup
+          </button>
+          <button
             className={`repo-tab ${activeTab === "commits" ? "active" : ""}`}
             onClick={() => {
               setActiveTab("commits");
@@ -968,6 +978,13 @@ const RepoDetail = () => {
             </button>
           )}
         </nav>
+
+        {/* TAB 0: SETUP */}
+        {activeTab === "setup" && (
+          <main style={{ padding: "24px 0" }}>
+            <QuickSetupPanel repo={repo} />
+          </main>
+        )}
 
         {/* TAB 1: CODE & FILES */}
         {activeTab === "code" && (
