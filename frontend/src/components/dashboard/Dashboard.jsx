@@ -5,8 +5,10 @@ import Navbar from "../Navbar";
 import api from "../../config/api";
 import socket from "../../config/socket";
 import { SkeletonCard } from "../Skeleton";
+import usePageMeta from "../../hooks/usePageMeta";
 
 const Dashboard = () => {
+  usePageMeta("Dashboard", "Your SafeArchive repositories, live activity, and suggested vaults.");
   const [repositories, setRepositories] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestedRepositories, setSuggestedRepositories] = useState([]);

@@ -3,6 +3,7 @@ import api from "../../config/api";
 import { useAuth } from "../../authContext";
 import { Link } from "react-router-dom";
 import "./auth.css";
+import usePageMeta from "../../hooks/usePageMeta";
 
 const SafeArchiveLogo = () => (
   <svg className="auth-logo-svg" viewBox="0 0 16 16" aria-hidden="true">
@@ -11,6 +12,7 @@ const SafeArchiveLogo = () => (
 );
 
 const Login = () => {
+  usePageMeta("Sign in", "Sign in to your SafeArchive account to access your repositories.");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

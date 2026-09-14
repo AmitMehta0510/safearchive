@@ -13,6 +13,7 @@ import NewPullRequestModal from "./NewPullRequestModal";
 import ReactionPicker from "../ReactionPicker";
 import IssueDetail from "../issue/IssueDetail";
 import { SkeletonRepoHeader, SkeletonCard } from "../Skeleton";
+import usePageMeta from "../../hooks/usePageMeta";
 import "./repoDetail.css";
 
 const RepoDetail = () => {
@@ -104,6 +105,10 @@ const RepoDetail = () => {
   const [starCount, setStarCount] = useState(0);
 
   const currentUserId = localStorage.getItem("userId");
+  usePageMeta(
+    repo ? `${repo.name}` : "Repository",
+    repo ? `View and manage the ${repo.name} repository on SafeArchive.` : ""
+  );
 
   const fetchRepoData = useCallback(async () => {
     try {

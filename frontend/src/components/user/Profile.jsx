@@ -8,10 +8,15 @@ import { BookIcon, RepoIcon, StarIcon, KeyIcon } from "@primer/octicons-react";
 import HeatMapProfile from "./HeatMap";
 import { useAuth } from "../../authContext";
 import { SkeletonCard, SkeletonProfileSidebar } from "../Skeleton";
+import usePageMeta from "../../hooks/usePageMeta";
 
 const Profile = () => {
   const navigate = useNavigate();
   const [userDetails, setUserDetails] = useState(null);
+  usePageMeta(
+    userDetails ? userDetails.username : "Profile",
+    "Manage your SafeArchive profile, pinned repositories, starred vaults, and API tokens."
+  );
   const [activeTab, setActiveTab] = useState("overview");
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [editBio, setEditBio] = useState("");
