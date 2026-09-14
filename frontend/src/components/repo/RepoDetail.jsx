@@ -11,6 +11,7 @@ import PullRequestList from "./PullRequestList";
 import PullRequestDetail from "./PullRequestDetail";
 import NewPullRequestModal from "./NewPullRequestModal";
 import ReactionPicker from "../ReactionPicker";
+import IssueDetail from "../issue/IssueDetail";
 import "./repoDetail.css";
 
 const RepoDetail = () => {
@@ -86,6 +87,7 @@ const RepoDetail = () => {
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
   const [newIssueTitle, setNewIssueTitle] = useState("");
   const [newIssueDesc, setNewIssueDesc] = useState("");
+  const [selectedIssue, setSelectedIssue] = useState(null);
 
   // Commit Creation State
   const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
@@ -990,88 +992,127 @@ safearchive push`}
         {/* TAB 4: ISSUES */}
         {activeTab === "issues" && (
           <main>
-            <div className="issues-controls">
-              <div className="issue-filter-buttons">
-                <button
-                  className={`issue-filter-btn ${issueFilter === "all" ? "active" : ""}`}
-                  onClick={() => setIssueFilter("all")}
-                >
-                  All ({issues.length})
-                </button>
-                <button
-                  className={`issue-filter-btn ${issueFilter === "open" ? "active" : ""}`}
-                  onClick={() => setIssueFilter("open")}
-                >
-                  Open ({issues.filter((i) => i.status === "open").length})
-                </button>
-                <button
-                  className={`issue-filter-btn ${issueFilter === "closed" ? "active" : ""}`}
-                  onClick={() => setIssueFilter("closed")}
-                >
-                  Closed ({issues.filter((i) => i.status === "closed").length})
-                </button>
-              </div>
-
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  setNewIssueTitle("");
-                  setNewIssueDesc("");
-                  setIsIssueModalOpen(true);
+            {selectedIssue ? (
+              <IssueDetail
+                issueId={selectedIssue._id}
+                repoId={id}
+                onBack={() => {
+                  setSelectedIssue(null);
+                  fetchRepoData();
                 }}
-              >
-                + New Issue
-              </button>
-            </div>
-
-            <div className="issues-list">
-              {filteredIssues.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
-                  No issues found matching this filter.
-                </div>
-              ) : (
-                filteredIssues.map((issue) => (
-                  <div key={issue._id} className="issue-item">
-                    <div className="issue-info">
-                      <div className="issue-title">
-                        {issue.title}
-                        <span className={`issue-status-badge ${issue.status}`}>
-                          {issue.status}
-                        </span>
-                      </div>
-                      {issue.description && (
-                        <p className="issue-desc">{issue.description}</p>
-                      )}
-                      <div className="issue-meta">
-                        Created: {new Date(issue.createdAt).toLocaleDateString()}
-                      </div>
-                      <div style={{ marginTop: "8px" }}>
-                        <ReactionPicker
-                          reactions={issue.reactions}
-                          currentUserId={currentUserId}
-                          onReact={(emoji) => handleReactIssue(issue._id, emoji)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="issue-actions">
-                      <button
-                        className="btn-secondary"
-                        onClick={() => handleToggleIssueStatus(issue._id, issue.status)}
-                      >
-                        {issue.status === "open" ? "Close Issue" : "Reopen Issue"}
-                      </button>
-                      <button
-                        className="btn-danger"
-                        onClick={() => handleDeleteIssue(issue._id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                onUpdated={fetchRepoData}
+              />
+            ) : (
+              <>
+                <div className="issues-controls">
+                  <div className="issue-filter-buttons">
+                    <button
+                      className={`issue-filter-btn ${issueFilter === "all" ? "active" : ""}`}
+                      onClick={() => setIssueFilter("all")}
+                    >
+                      All ({issues.length})
+                    </button>
+                    <button
+                      className={`issue-filter-btn ${issueFilter === "open" ? "active" : ""}`}
+                      onClick={() => setIssueFilter("open")}
+                    >
+                      Open ({issues.filter((i) => i.status === "open").length})
+                    </button>
+                    <button
+                      className={`issue-filter-btn ${issueFilter === "closed" ? "active" : ""}`}
+                      onClick={() => setIssueFilter("closed")}
+                    >
+                      Closed ({issues.filter((i) => i.status === "closed").length})
+                    </button>
                   </div>
-                ))
-              )}
-            </div>
+
+                  <button
+                    className="btn-primary"
+                    onClick={() => {
+                      setNewIssueTitle("");
+                      setNewIssueDesc("");
+                      setIsIssueModalOpen(true);
+                    }}
+                  >
+                    + New Issue
+                  </button>
+                </div>
+
+                <div className="issues-list">
+                  {filteredIssues.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
+                      No issues found matching this filter.
+                    </div>
+                  ) : (
+                    filteredIssues.map((issue) => (
+                      <div key={issue._id} className="issue-item">
+                        <div className="issue-info">
+                          <div className="issue-title">
+                            <span
+                              style={{ cursor: "pointer", color: "#58a6ff" }}
+                              onClick={() => setSelectedIssue(issue)}
+                            >
+                              {issue.title}
+                            </span>
+                            <span className={`issue-status-badge ${issue.status}`}>
+                              {issue.status}
+                            </span>
+                            {(issue.comments || []).length > 0 && (
+                              <span
+                                style={{
+                                  fontSize: "0.75rem",
+                                  color: "#8b949e",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                }}
+                              >
+                                💬 {issue.comments.length}
+                              </span>
+                            )}
+                          </div>
+                          {issue.description && (
+                            <p className="issue-desc">{issue.description}</p>
+                          )}
+                          <div className="issue-meta">
+                            Created: {new Date(issue.createdAt).toLocaleDateString()}
+                          </div>
+                          <div style={{ marginTop: "8px" }}>
+                            <ReactionPicker
+                              reactions={issue.reactions}
+                              currentUserId={currentUserId}
+                              onReact={(emoji) => handleReactIssue(issue._id, emoji)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="issue-actions">
+                          <button
+                            className="btn-secondary"
+                            style={{ fontSize: "0.82rem" }}
+                            onClick={() => setSelectedIssue(issue)}
+                          >
+                            Open →
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            onClick={() => handleToggleIssueStatus(issue._id, issue.status)}
+                          >
+                            {issue.status === "open" ? "Close" : "Reopen"}
+                          </button>
+                          <button
+                            className="btn-danger"
+                            onClick={() => handleDeleteIssue(issue._id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
           </main>
         )}
 
