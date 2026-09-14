@@ -1,34 +1,125 @@
-nav {
+/* ============================================================
+   NAVBAR — SafeArchive production navbar
+   ============================================================ */
+
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background-color: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid #30363d;
+  height: 56px;
   display: flex;
+  align-items: center;
+}
+
+.navbar-inner {
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  padding-bottom: 10px;
-  border-bottom: 2px solid white;
+  gap: 16px;
 }
 
-nav img {
-  height: 50px;
-  border-radius: 100%;
-}
-nav div {
+/* ── Brand / Logo ── */
+.navbar-brand {
   display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #f0f6fc;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
 }
 
-nav h3 {
-  margin-left: 15px;
-  color: white;
+.navbar-brand:hover {
+  color: #58a6ff;
+  text-decoration: none;
 }
 
-nav p {
-  margin-left: 50px;
-  font-weight: bold;
-  color: white;
+.navbar-logo-icon {
+  width: 28px;
+  height: 28px;
+  fill: #f0f6fc;
+  flex-shrink: 0;
+  transition: fill 0.15s ease;
 }
 
-nav h3:hover,
-nav p:hover {
-  text-decoration: underline;
+.navbar-brand:hover .navbar-logo-icon {
+  fill: #58a6ff;
 }
-/* --- Notification Center --- */
+
+/* ── Right side links ── */
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navbar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #c9d1d9;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.navbar-link:hover {
+  background-color: #21262d;
+  color: #f0f6fc;
+  text-decoration: none;
+}
+
+.navbar-link.active {
+  color: #f0f6fc;
+  background-color: #21262d;
+}
+
+/* New repo CTA button */
+.navbar-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #ffffff;
+  background-color: #238636;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.navbar-cta:hover {
+  background-color: #2ea043;
+  text-decoration: none;
+  color: #ffffff;
+}
+
+/* Divider between link groups */
+.navbar-divider {
+  width: 1px;
+  height: 20px;
+  background-color: #30363d;
+  flex-shrink: 0;
+}
+
+/* ── Notification Center ── */
 .notification-center-wrapper {
   position: relative;
   display: flex;
