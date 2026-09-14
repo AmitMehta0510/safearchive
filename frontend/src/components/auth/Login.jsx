@@ -5,11 +5,6 @@ import { Link } from "react-router-dom";
 import "./auth.css";
 import usePageMeta from "../../hooks/usePageMeta";
 
-const SafeArchiveLogo = () => (
-  <svg className="auth-logo-svg" viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.6-1.2-1.6 1.2a.25.25 0 0 1-.4-.2Z" />
-  </svg>
-);
 
 const Login = () => {
   usePageMeta("Sign in", "Sign in to your SafeArchive account to access your repositories.");
@@ -44,7 +39,7 @@ const Login = () => {
     <div className="auth-page">
       {/* Brand */}
       <div className="auth-logo-area">
-        <SafeArchiveLogo />
+        <img src="/logo.png" alt="SafeArchive logo" style={{ width: "48px", height: "48px", borderRadius: "10px", objectFit: "cover" }} />
         <span className="auth-brand-name">SafeArchive</span>
         <p className="auth-tagline">Secure cloud-backed version control</p>
       </div>
