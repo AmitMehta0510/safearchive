@@ -395,7 +395,7 @@ const RepoDetail = () => {
   const fetchActionsRuns = async () => {
     try {
       setActionsLoading(true);
-      const res = await api.get("/repo/" + repoId + "/actions/runs");
+      const res = await api.get("/repo/" + id + "/actions/runs");
       setActionsRuns(res.data.runs || []);
     } catch (err) {
       console.error("Error fetching actions runs:", err);
@@ -407,7 +407,7 @@ const RepoDetail = () => {
   const handleDispatchWorkflow = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/repo/" + repoId + "/actions/dispatch", { branch: dispatchBranch });
+      await api.post("/repo/" + id + "/actions/dispatch", { branch: dispatchBranch });
       setIsDispatchModalOpen(false);
       fetchActionsRuns();
     } catch (err) {
@@ -417,10 +417,10 @@ const RepoDetail = () => {
 
   const handleRerunWorkflow = async (runId) => {
     try {
-      await api.post("/repo/" + repoId + "/actions/runs/" + runId + "/rerun");
+      await api.post("/repo/" + id + "/actions/runs/" + runId + "/rerun");
       fetchActionsRuns();
       if (selectedRun && selectedRun._id === runId) {
-        const updated = await api.get("/repo/" + repoId + "/actions/runs/" + runId);
+        const updated = await api.get("/repo/" + id + "/actions/runs/" + runId);
         setSelectedRun(updated.data);
       }
     } catch (err) {
@@ -430,7 +430,7 @@ const RepoDetail = () => {
 
   const fetchReleases = async () => {
     try {
-      const res = await api.get("/repo/" + repoId + "/releases");
+      const res = await api.get("/repo/" + id + "/releases");
       setReleases(res.data || []);
     } catch (err) {
       console.error("Error fetching releases:", err);
@@ -440,7 +440,7 @@ const RepoDetail = () => {
   const handleCreateRelease = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/repo/" + repoId + "/releases", {
+      await api.post("/repo/" + id + "/releases", {
         tagName: newReleaseTag.trim(),
         name: newReleaseTitle.trim(),
         body: newReleaseBody,
@@ -460,7 +460,7 @@ const RepoDetail = () => {
   const handleDeleteRelease = async (releaseId) => {
     if (!window.confirm("Are you sure you want to delete this release?")) return;
     try {
-      await api.delete("/repo/" + repoId + "/releases/" + releaseId);
+      await api.delete("/repo/" + id + "/releases/" + releaseId);
       fetchReleases();
     } catch (err) {
       alert(err.response?.data?.error || "Failed to delete release");
@@ -469,7 +469,7 @@ const RepoDetail = () => {
 
   const fetchWebhooks = async () => {
     try {
-      const res = await api.get("/repo/" + repoId + "/webhooks");
+      const res = await api.get("/repo/" + id + "/webhooks");
       setWebhooks(res.data || []);
     } catch (err) {
       console.error("Error fetching webhooks:", err);
@@ -479,7 +479,7 @@ const RepoDetail = () => {
   const handleCreateWebhook = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/repo/" + repoId + "/webhooks", {
+      await api.post("/repo/" + id + "/webhooks", {
         url: webhookUrl.trim(),
         secret: webhookSecret.trim(),
         events: webhookEvents,
@@ -496,7 +496,7 @@ const RepoDetail = () => {
   const handleDeleteWebhook = async (webhookId) => {
     if (!window.confirm("Are you sure you want to delete this webhook?")) return;
     try {
-      await api.delete("/repo/" + repoId + "/webhooks/" + webhookId);
+      await api.delete("/repo/" + id + "/webhooks/" + webhookId);
       fetchWebhooks();
     } catch (err) {
       alert(err.response?.data?.error || "Failed to delete webhook");
@@ -505,7 +505,7 @@ const RepoDetail = () => {
 
   const handleTestWebhook = async (webhookId) => {
     try {
-      const res = await api.post("/repo/" + repoId + "/webhooks/" + webhookId + "/test");
+      const res = await api.post("/repo/" + id + "/webhooks/" + webhookId + "/test");
       alert("Ping event dispatched! Status Code: " + res.data.delivery?.statusCode);
       fetchWebhooks();
     } catch (err) {
@@ -1015,7 +1015,473 @@ safearchive push`}
           </main>
         )}
 
-        {/* TAB 5: SETTINGS */}
+        {/* TAB 5: ACTIONS / CI */}
+        {activeTab === "actions" && (
+          <main>
+            <div className="commits-header-row">
+              <div>
+                <h3 style={{ margin: 0, color: "#f0f6fc" }}>Workflow Runs</h3>
+                <span style={{ fontSize: "0.85rem", color: "#8b949e" }}>
+                  CI/CD pipeline execution history for this repository
+                </span>
+              </div>
+              <button
+                className="btn-primary"
+                onClick={() => setIsDispatchModalOpen(true)}
+              >
+                ▶ Run Workflow
+              </button>
+            </div>
+
+            {actionsLoading ? (
+              <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
+                Loading workflow runs...
+              </div>
+            ) : actionsRuns.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
+                <p>No workflow runs yet. Trigger a manual dispatch or push a commit to get started.</p>
+              </div>
+            ) : (
+              <div className="commits-timeline" style={{ marginTop: "16px" }}>
+                {actionsRuns.map((run) => {
+                  const statusColor =
+                    run.conclusion === "success" ? "#3fb950"
+                    : run.conclusion === "failure" ? "#f85149"
+                    : run.status === "in_progress" ? "#d29922"
+                    : "#8b949e";
+                  const statusLabel =
+                    run.status === "in_progress" ? "In Progress"
+                    : run.conclusion === "success" ? "Success"
+                    : run.conclusion === "failure" ? "Failed"
+                    : run.conclusion === "cancelled" ? "Cancelled"
+                    : run.status === "queued" ? "Queued"
+                    : run.status || "Unknown";
+                  return (
+                    <div
+                      key={run._id}
+                      className="commit-row"
+                      style={{ cursor: "pointer" }}
+                      onClick={() =>
+                        setSelectedRun(selectedRun?._id === run._id ? null : run)
+                      }
+                    >
+                      <div className="commit-info">
+                        <div className="commit-title-row">
+                          <span
+                            style={{
+                              display: "inline-block",
+                              width: "10px",
+                              height: "10px",
+                              borderRadius: "50%",
+                              backgroundColor: statusColor,
+                              marginRight: "8px",
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span className="commit-message">{run.name || "Workflow Run"}</span>
+                          <span
+                            className="commit-badge-branch"
+                            style={{ color: statusColor, borderColor: statusColor }}
+                          >
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <div className="commit-meta">
+                          <span>Branch: <code>{run.branch || "main"}</code></span>
+                          <span className="meta-sep">&bull;</span>
+                          <span>Trigger: {run.event || "push"}</span>
+                          {run.durationMs && (
+                            <>
+                              <span className="meta-sep">&bull;</span>
+                              <span>{(run.durationMs / 1000).toFixed(1)}s</span>
+                            </>
+                          )}
+                          <span className="meta-sep">&bull;</span>
+                          <span>{new Date(run.createdAt).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <button
+                        className="btn-secondary"
+                        style={{ fontSize: "0.8rem" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRerunWorkflow(run._id);
+                        }}
+                        title="Re-run this workflow"
+                      >
+                        ↺ Re-run
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Expanded run steps panel */}
+            {selectedRun && (
+              <div
+                style={{
+                  marginTop: "16px",
+                  backgroundColor: "#0d1117",
+                  border: "1px solid #30363d",
+                  borderRadius: "8px",
+                  padding: "16px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <h4 style={{ margin: 0, color: "#f0f6fc" }}>
+                    {selectedRun.name || "Workflow"} — Steps
+                  </h4>
+                  <button
+                    className="btn-secondary"
+                    style={{ fontSize: "0.8rem" }}
+                    onClick={() => setSelectedRun(null)}
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+                {(selectedRun.steps || []).length === 0 ? (
+                  <p style={{ color: "#8b949e", fontSize: "0.85rem" }}>No step details available.</p>
+                ) : (
+                  (selectedRun.steps || []).map((step, idx) => {
+                    const sc =
+                      step.conclusion === "success" ? "#3fb950"
+                      : step.conclusion === "failure" ? "#f85149"
+                      : "#8b949e";
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: "8px 12px",
+                          borderBottom: "1px solid #21262d",
+                          display: "flex",
+                          gap: "12px",
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <span style={{ color: sc, fontSize: "0.85rem", minWidth: "70px" }}>
+                          {step.conclusion === "success" ? "✔ Pass"
+                            : step.conclusion === "failure" ? "✘ Fail"
+                            : "● " + (step.status || "pending")}
+                        </span>
+                        <div>
+                          <div style={{ color: "#c9d1d9", fontSize: "0.9rem" }}>{step.name}</div>
+                          {step.logs && (
+                            <pre
+                              style={{
+                                marginTop: "6px",
+                                backgroundColor: "#161b22",
+                                padding: "8px",
+                                borderRadius: "4px",
+                                fontSize: "0.78rem",
+                                color: "#8b949e",
+                                overflowX: "auto",
+                                maxHeight: "120px",
+                              }}
+                            >
+                              {step.logs}
+                            </pre>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* Dispatch Workflow Modal */}
+            {isDispatchModalOpen && (
+              <div className="modal-overlay" onClick={() => setIsDispatchModalOpen(false)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <h3>Dispatch Workflow Manually</h3>
+                  <form onSubmit={handleDispatchWorkflow}>
+                    <div style={{ marginBottom: "16px" }}>
+                      <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                        Target Branch
+                      </label>
+                      <select
+                        value={dispatchBranch}
+                        onChange={(e) => setDispatchBranch(e.target.value)}
+                        className="pr-branch-select"
+                        style={{ width: "100%" }}
+                      >
+                        {branches.map((b) => (
+                          <option key={b.name} value={b.name}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="modal-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setIsDispatchModalOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-primary">
+                        ▶ Dispatch
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </main>
+        )}
+
+        {/* TAB 6: RELEASES */}
+        {activeTab === "releases" && (
+          <main>
+            <div className="commits-header-row">
+              <div>
+                <h3 style={{ margin: 0, color: "#f0f6fc" }}>Releases</h3>
+                <span style={{ fontSize: "0.85rem", color: "#8b949e" }}>
+                  Published versions and changelogs for this repository
+                </span>
+              </div>
+              {isOwner && (
+                <button
+                  className="btn-primary"
+                  onClick={() => setIsNewReleaseModalOpen(true)}
+                >
+                  + Draft New Release
+                </button>
+              )}
+            </div>
+
+            {releases.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px", color: "#8b949e" }}>
+                <p>No releases published yet.</p>
+                {isOwner && (
+                  <button
+                    className="btn-secondary"
+                    style={{ marginTop: "12px" }}
+                    onClick={() => setIsNewReleaseModalOpen(true)}
+                  >
+                    Create the first release
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                {releases.map((rel, idx) => (
+                  <div
+                    key={rel._id}
+                    style={{
+                      backgroundColor: "#0d1117",
+                      border: "1px solid #30363d",
+                      borderRadius: "8px",
+                      padding: "20px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
+                        gap: "12px",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                          <span
+                            style={{
+                              backgroundColor: "#1f6feb",
+                              color: "#fff",
+                              padding: "2px 10px",
+                              borderRadius: "20px",
+                              fontSize: "0.8rem",
+                              fontFamily: "monospace",
+                              fontWeight: 600,
+                            }}
+                          >
+                            🏷 {rel.tagName}
+                          </span>
+                          {idx === 0 && (
+                            <span
+                              style={{
+                                backgroundColor: "#238636",
+                                color: "#fff",
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              Latest
+                            </span>
+                          )}
+                          {rel.isPrerelease && (
+                            <span
+                              style={{
+                                backgroundColor: "#bb8009",
+                                color: "#fff",
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              Pre-release
+                            </span>
+                          )}
+                        </div>
+                        <h3 style={{ margin: "8px 0 4px 0", color: "#f0f6fc", fontSize: "1.1rem" }}>
+                          {rel.name || rel.tagName}
+                        </h3>
+                        <div style={{ fontSize: "0.82rem", color: "#8b949e", marginBottom: "10px" }}>
+                          Released on {new Date(rel.createdAt).toLocaleDateString()} &bull; Branch:{" "}
+                          <code>{rel.targetBranch || "main"}</code>
+                        </div>
+                        {rel.body && (
+                          <p
+                            style={{
+                              color: "#c9d1d9",
+                              fontSize: "0.9rem",
+                              lineHeight: 1.6,
+                              whiteSpace: "pre-wrap",
+                              margin: 0,
+                            }}
+                          >
+                            {rel.body}
+                          </p>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <a
+                          href={`${api.defaults.baseURL}/repo/${id}/releases/${rel._id}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-secondary"
+                          style={{ textDecoration: "none", fontSize: "0.82rem" }}
+                        >
+                          ⬇ Download
+                        </a>
+                        {isOwner && (
+                          <button
+                            className="btn-secondary"
+                            style={{ color: "#f85149", borderColor: "#da3633", fontSize: "0.82rem" }}
+                            onClick={() => handleDeleteRelease(rel._id)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* New Release Modal */}
+            {isNewReleaseModalOpen && (
+              <div className="modal-overlay" onClick={() => setIsNewReleaseModalOpen(false)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <h3>Draft New Release</h3>
+                  <form onSubmit={handleCreateRelease}>
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                        Tag Name * <span style={{ color: "#8b949e", fontSize: "0.8rem" }}>(e.g. v1.0.0)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newReleaseTag}
+                        onChange={(e) => setNewReleaseTag(e.target.value)}
+                        placeholder="v1.0.0"
+                        required
+                        style={{
+                          width: "100%", padding: "8px 12px", borderRadius: "6px",
+                          border: "1px solid #30363d", backgroundColor: "#0d1117",
+                          color: "#c9d1d9", boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                        Release Title
+                      </label>
+                      <input
+                        type="text"
+                        value={newReleaseTitle}
+                        onChange={(e) => setNewReleaseTitle(e.target.value)}
+                        placeholder="e.g. Initial Release"
+                        style={{
+                          width: "100%", padding: "8px 12px", borderRadius: "6px",
+                          border: "1px solid #30363d", backgroundColor: "#0d1117",
+                          color: "#c9d1d9", boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                        Target Branch
+                      </label>
+                      <select
+                        value={newReleaseBranch}
+                        onChange={(e) => setNewReleaseBranch(e.target.value)}
+                        className="pr-branch-select"
+                        style={{ width: "100%" }}
+                      >
+                        {branches.map((b) => (
+                          <option key={b.name} value={b.name}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ marginBottom: "14px" }}>
+                      <label style={{ display: "block", marginBottom: "6px", fontSize: "0.9rem" }}>
+                        Release Notes / Changelog
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={newReleaseBody}
+                        onChange={(e) => setNewReleaseBody(e.target.value)}
+                        placeholder="Describe what's new in this release..."
+                        style={{
+                          width: "100%", padding: "8px 12px", borderRadius: "6px",
+                          border: "1px solid #30363d", backgroundColor: "#0d1117",
+                          color: "#c9d1d9", boxSizing: "border-box", fontFamily: "inherit",
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
+                      <input
+                        type="checkbox"
+                        id="prerelease-check"
+                        checked={newReleasePrerelease}
+                        onChange={(e) => setNewReleasePrerelease(e.target.checked)}
+                        style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                      />
+                      <label htmlFor="prerelease-check" style={{ fontSize: "0.9rem", cursor: "pointer" }}>
+                        This is a pre-release
+                      </label>
+                    </div>
+                    <div className="modal-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setIsNewReleaseModalOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn-primary">
+                        Publish Release
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </main>
+        )}
+
+        {/* TAB 7: SETTINGS */}
         {activeTab === "settings" && isOwner && (
           <main className="settings-tab">
             {settingsMessage && (
