@@ -782,6 +782,122 @@ const Profile = () => {
           </div>
         </div>
       )}
+      {/* MODAL: CUSTOMIZE PINNED REPOS */}
+      {isCustomizePinsOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+          }}
+          onClick={() => setIsCustomizePinsOpen(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "#161b22",
+              border: "1px solid #30363d",
+              borderRadius: "10px",
+              padding: "24px",
+              maxWidth: "560px",
+              width: "90%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "16px",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, color: "#f0f6fc" }}>Customize Pinned Repositories</h3>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.83rem", color: "#8b949e" }}>
+                  Select up to 6 repositories to pin to your profile.
+                </p>
+              </div>
+              <button
+                className="btn-secondary"
+                style={{ fontSize: "0.8rem" }}
+                onClick={() => setIsCustomizePinsOpen(false)}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {repoList.length === 0 ? (
+              <p style={{ color: "#8b949e", textAlign: "center" }}>
+                You haven't created any repositories yet.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {repoList.map((r) => {
+                  const rId = r._id || r;
+                  const rName = r.name || "Repository";
+                  const pinnedIds = (userDetails.pinnedRepos || []).map(
+                    (p) => p._id || p
+                  );
+                  const isPinned = pinnedIds.includes(rId.toString());
+                  const pinnedCount = pinnedIds.length;
+                  const canPin = !isPinned && pinnedCount >= 6;
+
+                  return (
+                    <div
+                      key={rId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        backgroundColor: isPinned ? "#0d2818" : "#0d1117",
+                        border: `1px solid ${isPinned ? "#238636" : "#30363d"}`,
+                        borderRadius: "6px",
+                        padding: "12px 14px",
+                        transition: "border-color 0.2s",
+                      }}
+                    >
+                      <div>
+                        <div style={{ color: "#f0f6fc", fontWeight: 600, fontSize: "0.9rem" }}>
+                          {isPinned && "📌 "}
+                          {rName}
+                        </div>
+                        {r.description && (
+                          <div style={{ color: "#8b949e", fontSize: "0.8rem", marginTop: "2px" }}>
+                            {r.description}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        className={isPinned ? "btn-danger" : "btn-secondary"}
+                        style={{
+                          fontSize: "0.8rem",
+                          minWidth: "80px",
+                          opacity: canPin ? 0.5 : 1,
+                        }}
+                        disabled={canPin}
+                        title={canPin ? "Maximum 6 pins reached" : ""}
+                        onClick={() => handleTogglePin(rId)}
+                      >
+                        {isPinned ? "Unpin" : "Pin"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <p style={{ marginTop: "16px", color: "#8b949e", fontSize: "0.8rem", textAlign: "center" }}>
+              {(userDetails.pinnedRepos || []).length}/6 repositories pinned
+            </p>
+          </div>
+        </div>
+      )}
     </>
   );
 };
